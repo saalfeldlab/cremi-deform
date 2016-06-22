@@ -3,14 +3,19 @@
  */
 package org.janelia.saalfeldlab.deform;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Random;
+
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
 
 import bdv.bigcat.label.FragmentSegmentAssignment;
 import bdv.bigcat.ui.GoldenAngleSaturatedARGBStream;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
 import bdv.img.h5.H5UnsignedByteSetupImageLoader;
+import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
 import bdv.labels.labelset.LabelMultisetType;
 import bdv.util.Bdv;
@@ -19,6 +24,7 @@ import bdv.util.BdvStackSource;
 import bdv.util.LocalIdService;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
+import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import mpicbg.spim.data.generic.sequence.ImgLoaderHints;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
@@ -32,8 +38,7 @@ import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
-import net.imglib2.realtransform.RealViews;
-import net.imglib2.realtransform.Scale3D;
+import net.imglib2.realtransform.Translation2D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
@@ -44,6 +49,28 @@ import net.imglib2.view.Views;
  *
  */
 public class Deform {
+	
+	public static class Parameters {
+		
+		@Parameter(names={"--infile", "-i"}, description = "input CREMI-format HDF5 file name")
+		public String inFile;
+		
+		@Parameter(names={"--outfile", "-o"}, description = "output CREMI-format HDF5 file name")
+		public String outFile;
+		
+		@Parameter(names={"--spacing", "-s"}, description = "control point spacing in px")
+		public double controlPointSpacing = 512;
+		
+		@Parameter(names={"--jitter", "-j"}, description = "jitter radius in px")
+		public double jitterRadius = 32;
+		
+		@Parameter(names={"--jitterchance", "-c"}, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
+		public double jitterChance = 0.5;
+		
+		@Parameter(names={"--num", "-n"}, description = "number of outputs")
+		public double n = 1;
+	}
+	
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
 
 	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(final IHDF5Reader reader,
@@ -131,25 +158,29 @@ public class Deform {
 		return new ThinplateSplineTransform(qs, ps);
 	}
 	
-	static public ArrayList<ThinplateSplineTransform> make2DSectionJitterTransforms(
+	static public ArrayList<RealTransform> make2DSectionJitterTransforms(
+			final Random rnd,
 			final Interval interval,
 			final double controlPointSpacing,
-			final double jitterRadius) {
+			final double jitterRadius,
+			final double jitterChance) {
 		
-		final Random rnd = new Random();
+		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
 
-		final ArrayList<ThinplateSplineTransform> sliceTransforms = new ArrayList<>();
+		RealTransform t = new Translation2D();
+		for (int z = 0; z < interval.dimension(2); ++z) {
 
-		for (int z = 0; z < interval.dimension(2); ++z)
-			sliceTransforms.add(
-					make2DSectionJitterTransform(
-							rnd,
-							interval,
-							controlPointSpacing,
-							jitterRadius));
+			if (rnd.nextDouble() < jitterChance)
+				t = make2DSectionJitterTransform(
+						rnd,
+						interval,
+						controlPointSpacing,
+						jitterRadius);
 
+			sliceTransforms.add(t);
+		}
+			
 		return sliceTransforms;
-
 	}
 	
 	static public <T> RandomAccessibleInterval<T> jitterSlices(
@@ -176,21 +207,15 @@ public class Deform {
 	 * @throws IOException
 	 */
 	public static void main(String[] args) throws IOException {
-		final String projectFile = args[0];
-		final double controlPointSpacing = 512;
-		final double jitterRadius = 32;
-		//final String outFile = args[1];
+
+		final Parameters params = new Parameters();
+		new JCommander(params, args);
 
 		String labelsDataset = "neuron_ids";
-		if (args.length > 1)
-			labelsDataset = args[1];
-
 		String rawDataset = "raw";
-		if (args.length > 2)
-			rawDataset = args[2];
-
-		System.out.println("Opening " + projectFile);
-		final IHDF5Reader reader = HDF5Factory.open(projectFile);
+		
+		System.out.println("Opening " + params.inFile);
+		final IHDF5Reader reader = HDF5Factory.openForReading(params.inFile);
 
 		// support both file_format 0.0 and >=0.1
 		final String volumesPath = reader.isGroup("/volumes") ? "/volumes" : "";
@@ -198,12 +223,16 @@ public class Deform {
 
 		/* raw pixels */
 		final String rawPath = volumesPath + "/" + rawDataset;
-		final H5UnsignedByteSetupImageLoader raw = new H5UnsignedByteSetupImageLoader(reader, rawPath, 0,
+		final H5UnsignedByteSetupImageLoader raw = new H5UnsignedByteSetupImageLoader(
+				reader,
+				rawPath,
+				0,
 				cellDimensions);
 		final RandomAccessibleInterval<UnsignedByteType> rawPixels = raw.getImage(0, ImgLoaderHints.LOAD_COMPLETELY);
 
 		/* labels */
-		final RandomAccessibleInterval<LabelMultisetType> labels = loadLabels(reader, labelsPath + "/" + labelsDataset);
+		final String fragmentsPath = labelsPath + "/" + labelsDataset;
+		final RandomAccessibleInterval<LabelMultisetType> labels = loadLabels(reader, fragmentsPath);
 
 		final RandomAccessibleInterval<LongType> longLabels = Converters.convert(labels,
 				new Converter<LabelMultisetType, LongType>() {
@@ -213,39 +242,71 @@ public class Deform {
 					}
 				}, new LongType());
 
+		final Random rnd = new Random();
+		
 		/* deform */
-		final ArrayList<ThinplateSplineTransform> jitterTransforms = make2DSectionJitterTransforms(
-				rawPixels,
-				controlPointSpacing,
-				jitterRadius);
-		
-		final RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
-				Views.extendValue(rawPixels, new UnsignedByteType(0)),
-				rawPixels,
-				jitterTransforms,
-				new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
-		
-		final RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
-				Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
-				longLabels,
-				jitterTransforms,
-				new NearestNeighborInterpolatorFactory<>());
+		for (int i = 0; i < params.n; ++i) {
+			
+			final ArrayList<RealTransform> jitterTransforms = make2DSectionJitterTransforms(
+					rnd,
+					rawPixels,
+					params.controlPointSpacing,
+					params.jitterRadius,
+					params.jitterChance);
+			
+			final RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
+					Views.extendValue(rawPixels, new UnsignedByteType(0)),
+					rawPixels,
+					jitterTransforms,
+					new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
+			
+			final RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
+					Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
+					longLabels,
+					jitterTransforms,
+					new NearestNeighborInterpolatorFactory<>());
+			
+			final String outFileName = 
+					params.outFile.replaceAll("\\.([^.]*)$", "." + i + ".$1");
+			
+			System.out.println("writing " + outFileName);
+			
+			final File outFile = new File(outFileName);
+			System.out.println("  " + rawPath);
+			H5Utils.saveUnsignedByte(
+					deformedRawPixels,
+					outFile,
+					rawPath,
+					cellDimensions);
+			
+			System.out.println("  " + fragmentsPath);
+			H5Utils.saveUnsignedLong(
+					deformedLongLabels,
+					outFile,
+					fragmentsPath,
+					cellDimensions);
+			
+			final IHDF5Writer writer = HDF5Factory.open(outFileName);
+			writer.float64().setArrayAttr(rawPath, "resolution", new double[]{40.0, 4.0, 4.0});
+			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[]{40.0, 4.0, 4.0});
+			writer.close();
+			
+//			display(
+//					RealViews.affine(
+//							Views.interpolate(
+//									Views.extendZero(deformedRawPixels),
+//									new NearestNeighborInterpolatorFactory<>()),
+//							new Scale3D(1, 1, 10)),
+//					RealViews.affine(
+//							Views.interpolate(
+//									Views.extendZero(deformedLongLabels),
+//									new NearestNeighborInterpolatorFactory<>()),
+//							new Scale3D(1, 1, 10)),
+//					new FinalInterval(
+//							rawPixels.dimension(0),
+//							rawPixels.dimension(1),
+//							rawPixels.dimension(2) * 10));
 
-		display(
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendZero(deformedRawPixels),
-								new NearestNeighborInterpolatorFactory<>()),
-						new Scale3D(1, 1, 10)),
-				RealViews.affine(
-						Views.interpolate(
-								Views.extendZero(deformedLongLabels),
-								new NearestNeighborInterpolatorFactory<>()),
-						new Scale3D(1, 1, 10)),
-				new FinalInterval(
-						rawPixels.dimension(0),
-						rawPixels.dimension(1),
-						rawPixels.dimension(2) * 10));
-
+		}
 	}
 }
