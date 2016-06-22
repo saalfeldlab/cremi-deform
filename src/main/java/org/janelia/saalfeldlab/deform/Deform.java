@@ -265,30 +265,32 @@ public class Deform {
 					longLabels,
 					jitterTransforms,
 					new NearestNeighborInterpolatorFactory<>());
-			
-			final String outFileName = 
-					params.outFile.replaceAll("\\.([^.]*)$", "." + i + ".$1");
-			
-			System.out.println("writing " + outFileName);
-			
-			final File outFile = new File(outFileName);
-			System.out.println("  " + rawPath);
+
+			final String rawDatasetName = rawPath + "_" + i;
+			final String fragmentsDatasetName = fragmentsPath + "_" + i;
+
+			System.out.println("writing " + params.outFile);
+
+			final File outFile = new File(params.outFile);
+			System.out.println("  " + rawDatasetName);
 			H5Utils.saveUnsignedByte(
 					deformedRawPixels,
 					outFile,
-					rawPath,
+					rawDatasetName,
 					cellDimensions);
-			
-			System.out.println("  " + fragmentsPath);
+
+			System.out.println("  " + fragmentsDatasetName);
 			H5Utils.saveUnsignedLong(
 					deformedLongLabels,
 					outFile,
-					fragmentsPath,
+					fragmentsDatasetName,
 					cellDimensions);
-			
-			final IHDF5Writer writer = HDF5Factory.open(outFileName);
-			writer.float64().setArrayAttr(rawPath, "resolution", new double[]{40.0, 4.0, 4.0});
-			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[]{40.0, 4.0, 4.0});
+
+			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
+			writer.float64().setArrayAttr(rawDatasetName, "resolution", new double[]{40.0, 4.0, 4.0});
+			writer.float64().setArrayAttr(fragmentsDatasetName, "resolution", new double[]{40.0, 4.0, 4.0});
+			writer.string().setAttr(rawDatasetName, "comment", "jittered with " + args.toString());
+			writer.string().setAttr(fragmentsDatasetName, "comment", "jittered with " + args.toString());
 			writer.close();
 			
 //			display(
