@@ -36,6 +36,7 @@ import net.imglib2.converter.Converters;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
+import net.imglib2.realtransform.AffineTransform2D;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
 import net.imglib2.realtransform.Translation2D;
@@ -66,7 +67,10 @@ public class Deform {
 		
 		@Parameter(names={"--jitterchance", "-c"}, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
 		public double jitterChance = 0.5;
-		
+
+		@Parameter(names={"--rotate", "-r"}, description = "rotate each section with the given angle in radians")
+		public double rotate = 0.0;
+
 		@Parameter(names={"--num", "-n"}, description = "number of outputs")
 		public double n = 1;
 	}
@@ -124,23 +128,31 @@ public class Deform {
 	 * @param interval
 	 * @param controlPointSpacing
 	 * @param jitterRadius
+	 * @param baseTransform A transormation to apply to each grid point before jittering.
 	 * @return
 	 */
 	static public ThinplateSplineTransform make2DSectionJitterTransform(
 			final Random rnd,
 			final Interval interval,
 			final double controlPointSpacing,
-			final double jitterRadius) {
+			final double jitterRadius,
+			final AffineTransform2D baseTransform) {
 		
 		final ArrayList<double[]> p = new ArrayList<>();
 		final ArrayList<double[]> q = new ArrayList<>();
 		
+		double[] center = new double[2];
+		center[0] = (double)(interval.dimension(0))/2;
+		center[1] = (double)(interval.dimension(1))/2;
+		
 		for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing) {
 			for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing) {
 				p.add(new double[]{x, y});
+				double[] transformed = new double[2];
+				baseTransform.apply(new double[]{x,  y}, transformed);
 				q.add(new double[]{
-						x + jitterRadius * (2 * rnd.nextDouble() - 1),
-						y + jitterRadius * (2 * rnd.nextDouble() - 1)});
+						transformed[0] + jitterRadius * (2 * rnd.nextDouble() - 1),
+						transformed[1] + jitterRadius * (2 * rnd.nextDouble() - 1)});
 			}
 		}
 		
@@ -163,11 +175,13 @@ public class Deform {
 			final Interval interval,
 			final double controlPointSpacing,
 			final double jitterRadius,
-			final double jitterChance) {
+			final double jitterChance,
+			final double rotationAngle) {
 		
 		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
 
 		RealTransform t = new Translation2D();
+		AffineTransform2D r = makeRotation(interval, rotationAngle);
 		for (int z = 0; z < interval.dimension(2); ++z) {
 
 			if (rnd.nextDouble() < jitterChance)
@@ -175,7 +189,8 @@ public class Deform {
 						rnd,
 						interval,
 						controlPointSpacing,
-						jitterRadius);
+						jitterRadius,
+						r);
 
 			sliceTransforms.add(t);
 		}
@@ -201,7 +216,22 @@ public class Deform {
 		}
 		return Views.stack(slices);
 	}
-		
+
+	static public <T> AffineTransform2D makeRotation(
+			final Interval interval,
+			final double angle) {
+
+		long width = interval.dimension(0);
+		long height = interval.dimension(1);
+
+		AffineTransform2D t = new AffineTransform2D();
+		t.translate(-width/2, -height/2);
+		t.rotate(angle);
+		t.translate(width/2, height/2);
+
+		return t;
+	}
+
 	/**
 	 * @param args
 	 * @throws IOException
@@ -252,15 +282,15 @@ public class Deform {
 					rawPixels,
 					params.controlPointSpacing,
 					params.jitterRadius,
-					params.jitterChance);
-			
-			final RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
+					params.jitterChance,
+					params.rotate);
+
+			RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
 					Views.extendValue(rawPixels, new UnsignedByteType(0)),
 					rawPixels,
 					jitterTransforms,
 					new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
-			
-			final RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
+			RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
 					Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
 					longLabels,
 					jitterTransforms,
