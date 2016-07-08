@@ -6,6 +6,7 @@ package org.janelia.saalfeldlab.deform;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import com.beust.jcommander.JCommander;
@@ -69,7 +70,7 @@ public class Deform {
 		public double jitterChance = 0.5;
 
 		@Parameter(names={"--rotate", "-r"}, description = "rotate each section with the given angle in radians")
-		public double rotate = 0.0;
+		public List<Double> rotate = new ArrayList<Double>();
 
 		@Parameter(names={"--num", "-n"}, description = "number of outputs")
 		public double n = 1;
@@ -277,13 +278,19 @@ public class Deform {
 		/* deform */
 		for (int i = 0; i < params.n; ++i) {
 			
+			double rotate;
+			if (params.rotate.size() == 0)
+				rotate = 0.0;
+			else
+				rotate = params.rotate.get(i%params.rotate.size());
+			
 			final ArrayList<RealTransform> jitterTransforms = make2DSectionJitterTransforms(
 					rnd,
 					rawPixels,
 					params.controlPointSpacing,
 					params.jitterRadius,
 					params.jitterChance,
-					params.rotate);
+					rotate);
 
 			RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
 					Views.extendValue(rawPixels, new UnsignedByteType(0)),
