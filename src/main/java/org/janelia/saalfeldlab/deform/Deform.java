@@ -181,8 +181,8 @@ public class Deform {
 		
 		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
 
-		RealTransform t = new Translation2D();
 		AffineTransform2D r = makeRotation(interval, rotationAngle);
+		RealTransform t = r.inverse();
 		for (int z = 0; z < interval.dimension(2); ++z) {
 
 			if (rnd.nextDouble() < jitterChance)
