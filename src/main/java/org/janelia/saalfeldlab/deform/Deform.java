@@ -6,6 +6,7 @@ package org.janelia.saalfeldlab.deform;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import com.beust.jcommander.JCommander;
@@ -36,9 +37,9 @@ import net.imglib2.converter.Converters;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
+import net.imglib2.realtransform.AffineTransform2D;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
-import net.imglib2.realtransform.Translation2D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
@@ -64,12 +65,20 @@ public class Deform {
 		@Parameter(names = { "--jitter", "-j" }, description = "jitter radius in px")
 		public double jitterRadius = 32;
 
-		@Parameter(names = { "--jitterchance",
-				"-c" }, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
-		public double jitterChance = 0.5;
+		@Parameter(names = { "--jitter3d", "-3" }, description = "perform the jitter in 3D")
+		public boolean jitter3d = false;
+
+		@Parameter(names = { "--rotate", "-r" }, description = "rotate each section with the given angle in radians")
+		public List<Double> rotate = new ArrayList<Double>();
 
 		@Parameter(names = { "--num", "-n" }, description = "number of outputs")
 		public double n = 1;
+
+		// anisotropic
+
+		@Parameter(names = { "--jitterchance",
+				"-c" }, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
+		public double jitterChance = 0.5;
 	}
 
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
@@ -126,23 +135,32 @@ public class Deform {
 	 * @param interval
 	 * @param controlPointSpacing
 	 * @param jitterRadius
+	 * @param baseTransform
+	 *            A transormation to apply to each grid point before jittering.
 	 * @return
 	 */
 	static public ThinplateSplineTransform make2DSectionJitterTransform(
 			final Random rnd,
 			final Interval interval,
 			final double controlPointSpacing,
-			final double jitterRadius) {
+			final double jitterRadius,
+			final AffineTransform2D baseTransform) {
 
 		final ArrayList<double[]> p = new ArrayList<>();
 		final ArrayList<double[]> q = new ArrayList<>();
 
+		final double[] center = new double[2];
+		center[0] = (double) (interval.dimension(0)) / 2;
+		center[1] = (double) (interval.dimension(1)) / 2;
+
 		for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing) {
 			for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing) {
 				p.add(new double[] { x, y });
+				final double[] transformed = new double[2];
+				baseTransform.apply(new double[] { x, y }, transformed);
 				q.add(new double[] {
-						x + jitterRadius * (2 * rnd.nextDouble() - 1),
-						y + jitterRadius * (2 * rnd.nextDouble() - 1) });
+						transformed[0] + jitterRadius * (2 * rnd.nextDouble() - 1),
+						transformed[1] + jitterRadius * (2 * rnd.nextDouble() - 1) });
 			}
 		}
 
@@ -160,16 +178,76 @@ public class Deform {
 		return new ThinplateSplineTransform(qs, ps);
 	}
 
+	/**
+	 * Creates the inverse thin plate spline transform for jittered points on a
+	 * 3D grid.
+	 *
+	 * @param interval
+	 * @param controlPointSpacing
+	 * @param jitterRadius
+	 * @param baseTransform
+	 *            A transormation to apply to each grid point before jittering.
+	 * @return
+	 */
+	static public ThinplateSplineTransform make3DSectionJitterTransform(
+			final Random rnd,
+			final Interval interval,
+			final double controlPointSpacing,
+			final double jitterRadius,
+			final double rotationAngle) {
+
+		final AffineTransform2D baseTransform = makeRotation(interval, rotationAngle);
+
+		final ArrayList<double[]> p = new ArrayList<>();
+		final ArrayList<double[]> q = new ArrayList<>();
+
+		final double[] center = new double[3];
+		center[0] = (double) (interval.dimension(0)) / 2;
+		center[1] = (double) (interval.dimension(1)) / 2;
+		center[2] = (double) (interval.dimension(2)) / 2;
+
+		for (double z = 0; z <= interval.dimension(2); z += controlPointSpacing) {
+			for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing) {
+				for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing) {
+					p.add(new double[] { x, y, z });
+					final double[] transformed = new double[3];
+					baseTransform.apply(new double[] { x, y, z }, transformed);
+					q.add(new double[] {
+							transformed[0] + jitterRadius * (2 * rnd.nextDouble() - 1),
+							transformed[1] + jitterRadius * (2 * rnd.nextDouble() - 1),
+							transformed[2] + jitterRadius * (2 * rnd.nextDouble() - 1) });
+				}
+			}
+		}
+
+		final double[][] ps = new double[3][p.size()];
+		final double[][] qs = new double[3][q.size()];
+
+		for (int i = 0; i < p.size(); ++i) {
+			final double[] pi = p.get(i);
+			ps[0][i] = pi[0];
+			ps[1][i] = pi[1];
+			ps[2][i] = pi[2];
+			final double[] qi = q.get(i);
+			qs[0][i] = qi[0];
+			qs[1][i] = qi[1];
+			qs[2][i] = qi[2];
+		}
+		return new ThinplateSplineTransform(qs, ps);
+	}
+
 	static public ArrayList<RealTransform> make2DSectionJitterTransforms(
 			final Random rnd,
 			final Interval interval,
 			final double controlPointSpacing,
 			final double jitterRadius,
-			final double jitterChance) {
+			final double jitterChance,
+			final double rotationAngle) {
 
 		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
 
-		RealTransform t = new Translation2D();
+		final AffineTransform2D r = makeRotation(interval, rotationAngle);
+		RealTransform t = r.inverse();
 		for (int z = 0; z < interval.dimension(2); ++z) {
 
 			if (rnd.nextDouble() < jitterChance)
@@ -177,7 +255,8 @@ public class Deform {
 						rnd,
 						interval,
 						controlPointSpacing,
-						jitterRadius);
+						jitterRadius,
+						r);
 
 			sliceTransforms.add(t);
 		}
@@ -204,11 +283,39 @@ public class Deform {
 		return Views.stack(slices);
 	}
 
+	static public <T> RandomAccessibleInterval<T> jitterVolume(
+			final RandomAccessible<T> source,
+			final Interval interval,
+			final RealTransform transform,
+			final InterpolatorFactory<T, RandomAccessible<T>> interpolatorFactory) {
+
+		return Views.interval(
+				new RealTransformRandomAccessible<T, RealTransform>(
+						Views.interpolate(source, interpolatorFactory),
+						transform),
+				new FinalInterval(interval.dimension(0), interval.dimension(1), interval.dimension(2)));
+	}
+
+	static public <T> AffineTransform2D makeRotation(
+			final Interval interval,
+			final double angle) {
+
+		final long width = interval.dimension(0);
+		final long height = interval.dimension(1);
+
+		final AffineTransform2D t = new AffineTransform2D();
+		t.translate(-width / 2, -height / 2);
+		t.rotate(angle);
+		t.translate(width / 2, height / 2);
+
+		return t;
+	}
+
 	/**
 	 * @param args
 	 * @throws IOException
 	 */
-	public static void main(final String... args) throws IOException {
+	public static void main(final String[] args) throws IOException {
 
 		final Parameters params = new Parameters();
 		new JCommander(params, args);
@@ -249,47 +356,82 @@ public class Deform {
 		/* deform */
 		for (int i = 0; i < params.n; ++i) {
 
-			final ArrayList<RealTransform> jitterTransforms = make2DSectionJitterTransforms(
-					rnd,
-					rawPixels,
-					params.controlPointSpacing,
-					params.jitterRadius,
-					params.jitterChance);
+			double rotate;
+			if (params.rotate.size() == 0)
+				rotate = 0.0;
+			else
+				rotate = params.rotate.get(i % params.rotate.size());
 
-			final RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
-					Views.extendValue(rawPixels, new UnsignedByteType(0)),
-					rawPixels,
-					jitterTransforms,
-					new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
+			RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = null;
+			RandomAccessibleInterval<LongType> deformedLongLabels = null;
 
-			final RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
-					Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
-					longLabels,
-					jitterTransforms,
-					new NearestNeighborInterpolatorFactory<>());
+			if (params.jitter3d) {
 
-			final String outFileName = params.outFile.replaceAll("\\.([^.]*)$", "." + i + ".$1");
+				final RealTransform transform = make3DSectionJitterTransform(
+						rnd,
+						rawPixels,
+						params.controlPointSpacing,
+						params.jitterRadius,
+						rotate);
 
-			System.out.println("writing " + outFileName);
+				deformedRawPixels = jitterVolume(
+						Views.extendValue(rawPixels, new UnsignedByteType(0)),
+						rawPixels,
+						transform,
+						new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
+				deformedLongLabels = jitterVolume(
+						Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
+						longLabels,
+						transform,
+						new NearestNeighborInterpolatorFactory<>());
 
-			final File outFile = new File(outFileName);
-			System.out.println("  " + rawPath);
+			} else {
+
+				final ArrayList<RealTransform> jitterTransforms = make2DSectionJitterTransforms(
+						rnd,
+						rawPixels,
+						params.controlPointSpacing,
+						params.jitterRadius,
+						params.jitterChance,
+						rotate);
+
+				deformedRawPixels = jitterSlices(
+						Views.extendValue(rawPixels, new UnsignedByteType(0)),
+						rawPixels,
+						jitterTransforms,
+						new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
+				deformedLongLabels = jitterSlices(
+						Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
+						longLabels,
+						jitterTransforms,
+						new NearestNeighborInterpolatorFactory<>());
+			}
+
+			final String rawDatasetName = rawPath + "_" + i;
+			final String fragmentsDatasetName = fragmentsPath + "_" + i;
+
+			System.out.println("writing " + params.outFile);
+
+			final File outFile = new File(params.outFile);
+			System.out.println("  " + rawDatasetName);
 			H5Utils.saveUnsignedByte(
 					deformedRawPixels,
 					outFile,
-					rawPath,
+					rawDatasetName,
 					cellDimensions);
 
-			System.out.println("  " + fragmentsPath);
+			System.out.println("  " + fragmentsDatasetName);
 			H5Utils.saveUnsignedLong(
 					deformedLongLabels,
 					outFile,
-					fragmentsPath,
+					fragmentsDatasetName,
 					cellDimensions);
 
-			final IHDF5Writer writer = HDF5Factory.open(outFileName);
-			writer.float64().setArrayAttr(rawPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
-			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
+			writer.float64().setArrayAttr(rawDatasetName, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			writer.float64().setArrayAttr(fragmentsDatasetName, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			writer.string().setAttr(rawDatasetName, "comment", "jittered with " + args.toString());
+			writer.string().setAttr(fragmentsDatasetName, "comment", "jittered with " + args.toString());
 			writer.close();
 
 			// display(
@@ -307,6 +449,7 @@ public class Deform {
 			// rawPixels.dimension(0),
 			// rawPixels.dimension(1),
 			// rawPixels.dimension(2) * 10));
+
 		}
 	}
 }
