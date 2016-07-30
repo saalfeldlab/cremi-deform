@@ -1,5 +1,5 @@
 /**
- * 
+ *
  */
 package org.janelia.saalfeldlab.deform;
 
@@ -49,28 +49,29 @@ import net.imglib2.view.Views;
  *
  */
 public class Deform {
-	
+
 	public static class Parameters {
-		
-		@Parameter(names={"--infile", "-i"}, description = "input CREMI-format HDF5 file name")
+
+		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
 		public String inFile;
-		
-		@Parameter(names={"--outfile", "-o"}, description = "output CREMI-format HDF5 file name")
+
+		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
 		public String outFile;
-		
-		@Parameter(names={"--spacing", "-s"}, description = "control point spacing in px")
+
+		@Parameter(names = { "--spacing", "-s" }, description = "control point spacing in px")
 		public double controlPointSpacing = 512;
-		
-		@Parameter(names={"--jitter", "-j"}, description = "jitter radius in px")
+
+		@Parameter(names = { "--jitter", "-j" }, description = "jitter radius in px")
 		public double jitterRadius = 32;
-		
-		@Parameter(names={"--jitterchance", "-c"}, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
+
+		@Parameter(names = { "--jitterchance",
+				"-c" }, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
 		public double jitterChance = 0.5;
-		
-		@Parameter(names={"--num", "-n"}, description = "number of outputs")
+
+		@Parameter(names = { "--num", "-n" }, description = "number of outputs")
 		public double n = 1;
 	}
-	
+
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
 
 	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(final IHDF5Reader reader,
@@ -88,19 +89,19 @@ public class Deform {
 	}
 
 	final static public void display(
-			final RealRandomAccessible< UnsignedByteType > raw,
-			final RealRandomAccessible< LongType > labels,
+			final RealRandomAccessible<UnsignedByteType> raw,
+			final RealRandomAccessible<LongType> labels,
 			final Interval interval) {
 		final FragmentSegmentAssignment assignment = new FragmentSegmentAssignment(new LocalIdService());
 		final GoldenAngleSaturatedARGBStream argbStream = new GoldenAngleSaturatedARGBStream(assignment);
-		BdvStackSource< UnsignedByteType > source = BdvFunctions.show(raw, interval, "raw", Bdv.options());
+		final BdvStackSource<UnsignedByteType> source = BdvFunctions.show(raw, interval, "raw", Bdv.options());
 		BdvFunctions.show(
 				Converters.convert(
 						labels,
-						new Converter<LongType, ARGBType>(){
+						new Converter<LongType, ARGBType>() {
 
 							@Override
-							public void convert(LongType input, ARGBType output) {
+							public void convert(final LongType input, final ARGBType output) {
 								final long id = input.get();
 								if (id == Label.TRANSPARENT || id == Label.INVALID)
 									output.set(0);
@@ -109,18 +110,19 @@ public class Deform {
 									final int r = ((argb >> 16) & 0xff) / 4;
 									final int g = ((argb >> 8) & 0xff) / 4;
 									final int b = (argb & 0xff) / 4;
-									
+
 									output.set(((((r << 8) | g) << 8) | b) | 0xff000000);
 								}
-							}	
+							}
 						},
 						new ARGBType()),
 				interval, "labels", Bdv.options().addTo(source.getBdvHandle()));
 	}
-	
+
 	/**
-	 * Creates the inverse thin plate spline transform for jittered points on a grid.
-	 * 
+	 * Creates the inverse thin plate spline transform for jittered points on a
+	 * grid.
+	 *
 	 * @param interval
 	 * @param controlPointSpacing
 	 * @param jitterRadius
@@ -131,22 +133,22 @@ public class Deform {
 			final Interval interval,
 			final double controlPointSpacing,
 			final double jitterRadius) {
-		
+
 		final ArrayList<double[]> p = new ArrayList<>();
 		final ArrayList<double[]> q = new ArrayList<>();
-		
+
 		for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing) {
 			for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing) {
-				p.add(new double[]{x, y});
-				q.add(new double[]{
+				p.add(new double[] { x, y });
+				q.add(new double[] {
 						x + jitterRadius * (2 * rnd.nextDouble() - 1),
-						y + jitterRadius * (2 * rnd.nextDouble() - 1)});
+						y + jitterRadius * (2 * rnd.nextDouble() - 1) });
 			}
 		}
-		
+
 		final double[][] ps = new double[2][p.size()];
 		final double[][] qs = new double[2][q.size()];
-		
+
 		for (int i = 0; i < p.size(); ++i) {
 			final double[] pi = p.get(i);
 			ps[0][i] = pi[0];
@@ -157,14 +159,14 @@ public class Deform {
 		}
 		return new ThinplateSplineTransform(qs, ps);
 	}
-	
+
 	static public ArrayList<RealTransform> make2DSectionJitterTransforms(
 			final Random rnd,
 			final Interval interval,
 			final double controlPointSpacing,
 			final double jitterRadius,
 			final double jitterChance) {
-		
+
 		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
 
 		RealTransform t = new Translation2D();
@@ -179,16 +181,16 @@ public class Deform {
 
 			sliceTransforms.add(t);
 		}
-			
+
 		return sliceTransforms;
 	}
-	
+
 	static public <T> RandomAccessibleInterval<T> jitterSlices(
 			final RandomAccessible<T> source,
 			final Interval interval,
 			final ArrayList<? extends RealTransform> sliceTransforms,
 			final InterpolatorFactory<T, RandomAccessible<T>> interpolatorFactory) {
-		
+
 		final ArrayList<RandomAccessibleInterval<T>> slices = new ArrayList<>();
 		for (int z = 0; z < sliceTransforms.size(); ++z) {
 			final RandomAccessible<T> slice = Views.hyperSlice(source, 2, z);
@@ -201,19 +203,19 @@ public class Deform {
 		}
 		return Views.stack(slices);
 	}
-		
+
 	/**
 	 * @param args
 	 * @throws IOException
 	 */
-	public static void main(String[] args) throws IOException {
+	public static void main(final String... args) throws IOException {
 
 		final Parameters params = new Parameters();
 		new JCommander(params, args);
 
-		String labelsDataset = "neuron_ids";
-		String rawDataset = "raw";
-		
+		final String labelsDataset = "neuron_ids";
+		final String rawDataset = "raw";
+
 		System.out.println("Opening " + params.inFile);
 		final IHDF5Reader reader = HDF5Factory.openForReading(params.inFile);
 
@@ -237,40 +239,39 @@ public class Deform {
 		final RandomAccessibleInterval<LongType> longLabels = Converters.convert(labels,
 				new Converter<LabelMultisetType, LongType>() {
 					@Override
-					public void convert(LabelMultisetType a, LongType b) {
+					public void convert(final LabelMultisetType a, final LongType b) {
 						b.set(a.entrySet().iterator().next().getElement().id());
 					}
 				}, new LongType());
 
 		final Random rnd = new Random();
-		
+
 		/* deform */
 		for (int i = 0; i < params.n; ++i) {
-			
+
 			final ArrayList<RealTransform> jitterTransforms = make2DSectionJitterTransforms(
 					rnd,
 					rawPixels,
 					params.controlPointSpacing,
 					params.jitterRadius,
 					params.jitterChance);
-			
+
 			final RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = jitterSlices(
 					Views.extendValue(rawPixels, new UnsignedByteType(0)),
 					rawPixels,
 					jitterTransforms,
 					new ClampingNLinearInterpolatorFactory<UnsignedByteType>());
-			
+
 			final RandomAccessibleInterval<LongType> deformedLongLabels = jitterSlices(
 					Views.extendValue(longLabels, new LongType(Label.TRANSPARENT)),
 					longLabels,
 					jitterTransforms,
 					new NearestNeighborInterpolatorFactory<>());
-			
-			final String outFileName = 
-					params.outFile.replaceAll("\\.([^.]*)$", "." + i + ".$1");
-			
+
+			final String outFileName = params.outFile.replaceAll("\\.([^.]*)$", "." + i + ".$1");
+
 			System.out.println("writing " + outFileName);
-			
+
 			final File outFile = new File(outFileName);
 			System.out.println("  " + rawPath);
 			H5Utils.saveUnsignedByte(
@@ -278,35 +279,34 @@ public class Deform {
 					outFile,
 					rawPath,
 					cellDimensions);
-			
+
 			System.out.println("  " + fragmentsPath);
 			H5Utils.saveUnsignedLong(
 					deformedLongLabels,
 					outFile,
 					fragmentsPath,
 					cellDimensions);
-			
-			final IHDF5Writer writer = HDF5Factory.open(outFileName);
-			writer.float64().setArrayAttr(rawPath, "resolution", new double[]{40.0, 4.0, 4.0});
-			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[]{40.0, 4.0, 4.0});
-			writer.close();
-			
-//			display(
-//					RealViews.affine(
-//							Views.interpolate(
-//									Views.extendZero(deformedRawPixels),
-//									new NearestNeighborInterpolatorFactory<>()),
-//							new Scale3D(1, 1, 10)),
-//					RealViews.affine(
-//							Views.interpolate(
-//									Views.extendZero(deformedLongLabels),
-//									new NearestNeighborInterpolatorFactory<>()),
-//							new Scale3D(1, 1, 10)),
-//					new FinalInterval(
-//							rawPixels.dimension(0),
-//							rawPixels.dimension(1),
-//							rawPixels.dimension(2) * 10));
 
+			final IHDF5Writer writer = HDF5Factory.open(outFileName);
+			writer.float64().setArrayAttr(rawPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			writer.close();
+
+			// display(
+			// RealViews.affine(
+			// Views.interpolate(
+			// Views.extendZero(deformedRawPixels),
+			// new NearestNeighborInterpolatorFactory<>()),
+			// new Scale3D(1, 1, 10)),
+			// RealViews.affine(
+			// Views.interpolate(
+			// Views.extendZero(deformedLongLabels),
+			// new NearestNeighborInterpolatorFactory<>()),
+			// new Scale3D(1, 1, 10)),
+			// new FinalInterval(
+			// rawPixels.dimension(0),
+			// rawPixels.dimension(1),
+			// rawPixels.dimension(2) * 10));
 		}
 	}
 }
