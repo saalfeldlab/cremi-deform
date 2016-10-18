@@ -7,29 +7,20 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-import java.util.stream.DoubleStream;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
 
-import bdv.bigcat.label.FragmentSegmentAssignment;
-import bdv.bigcat.ui.GoldenAngleSaturatedARGBStream;
-import bdv.img.h5.H5LabelMultisetSetupImageLoader;
-import bdv.img.h5.H5UnsignedByteSetupImageLoader;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
 import bdv.labels.labelset.LabelMultisetType;
-import bdv.util.Bdv;
-import bdv.util.BdvFunctions;
-import bdv.util.BdvStackSource;
-import bdv.util.LocalIdService;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
-import mpicbg.spim.data.generic.sequence.ImgLoaderHints;
 import mpicbg.trakem2.transform.CoordinateTransform;
 import mpicbg.trakem2.transform.CoordinateTransformList;
 import net.imglib2.FinalInterval;
@@ -47,11 +38,8 @@ import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
-import net.imglib2.realtransform.RealViews;
-import net.imglib2.realtransform.Scale3D;
 import net.imglib2.realtransform.Translation2D;
 import net.imglib2.type.Type;
-import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.view.Views;
@@ -67,6 +55,12 @@ public class DeformToAligned {
 		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
 		public String inFile;
 
+		@Parameter(names = { "--infile_labels", "-j" }, description = "input CREMI-format HDF5 file name")
+		public String inFileLabels = null;
+
+		@Parameter( names = { "--label", "-l" }, description = "label dataset" )
+		public List<String> labels = Arrays.asList( new String[]{"/volumes/labels/clefts", "/volumes/labels/neuron_ids"});
+
 		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
 		public String outFile;
 
@@ -75,7 +69,6 @@ public class DeformToAligned {
 
 		@Parameter(names = { "--meshcellsize", "-c" }, description = "mesh cell size for rendering the output")
 		public long meshCellSize;
-
 	}
 
 	/**
@@ -144,84 +137,6 @@ public class DeformToAligned {
 	}
 
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
-
-	/**
-	 * Load labels with the correct offset.
-	 *
-	 * @param reader
-	 * @param dataset
-	 * @return
-	 * @throws IOException
-	 */
-	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(
-			final IHDF5Reader reader,
-			final String dataset) throws IOException {
-		final RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
-		if (reader.exists(dataset)) {
-			final H5LabelMultisetSetupImageLoader fragments =
-					new H5LabelMultisetSetupImageLoader(
-							reader,
-							null,
-							dataset,
-							1,
-							cellDimensions);
-			final double[] resolution;
-			if (reader.object().hasAttribute(dataset, "offset")) {
-				final double[] offset = H5Utils.loadAttribute(reader, dataset, "offset");
-				if (reader.object().hasAttribute(dataset, "resolution")) {
-					resolution = H5Utils.loadAttribute(reader, dataset, "resolution");
-					for (int i = 0; i < offset.length; ++i)
-						offset[i] /= resolution[i];
-				}
-				/* in CREMI, all offsets are integers */
-				final long[] longOffset = DoubleStream.of(offset).mapToLong(a -> Math.round(a)).toArray();
-				fragmentsPixels = Views.translate(
-						fragments.getImage(0, 0),
-						new long[]{
-								longOffset[2],
-								longOffset[1],
-								longOffset[0]
-						});
-			}
-			else
-				fragmentsPixels = fragments.getImage(0, 0);
-		} else {
-			System.out.println("no labels found cooresponding to requested dataset '" + dataset + "'");
-			fragmentsPixels = null;
-		}
-		return fragmentsPixels;
-	}
-
-	final static public void display(
-			final RealRandomAccessible<UnsignedByteType> raw,
-			final RealRandomAccessible<LongType> labels,
-			final Interval interval) {
-		final FragmentSegmentAssignment assignment = new FragmentSegmentAssignment(new LocalIdService());
-		final GoldenAngleSaturatedARGBStream argbStream = new GoldenAngleSaturatedARGBStream(assignment);
-		final BdvStackSource<UnsignedByteType> source = BdvFunctions.show(raw, interval, "raw", Bdv.options());
-		BdvFunctions.show(
-				Converters.convert(
-						labels,
-						new Converter<LongType, ARGBType>() {
-
-							@Override
-							public void convert(final LongType input, final ARGBType output) {
-								final long id = input.get();
-								if (id == Label.TRANSPARENT || id == Label.INVALID)
-									output.set(0);
-								else {
-									final int argb = argbStream.argb(input.get());
-									final int r = ((argb >> 16) & 0xff) / 4;
-									final int g = ((argb >> 8) & 0xff) / 4;
-									final int b = (argb & 0xff) / 4;
-
-									output.set(((((r << 8) | g) << 8) | b) | 0xff000000);
-								}
-							}
-						},
-						new ARGBType()),
-				interval, "labels", Bdv.options().addTo(source.getBdvHandle()));
-	}
 
 	/**
 	 * Creates the inverse thin plate spline transform for jittered points on a
@@ -397,42 +312,22 @@ public class DeformToAligned {
 		final Parameters params = new Parameters();
 		new JCommander(params, args);
 
-		final String labelsDataset = "neuron_ids";
-		final String rawDataset = "raw";
+		try (final FileReader transformsReader = new FileReader(new File(params.inTransformations))) {
 
-		System.out.println("Opening " + params.inFile);
-		final IHDF5Reader reader = HDF5Factory.openForReading(params.inFile);
+			System.out.println("Opening " + params.inFile);
+			final IHDF5Reader rawReader = HDF5Factory.openForReading(params.inFile);
+			final IHDF5Reader labelsReader = params.inFileLabels == null ? rawReader : HDF5Factory.openForReading(params.inFileLabels);
 
-		// support both file_format 0.0 and >=0.1
-		final String volumesPath = reader.isGroup("/volumes") ? "/volumes" : "";
-		final String labelsPath = reader.isGroup(volumesPath + "/labels") ? volumesPath + "/labels" : "";
+			/* raw pixels */
+			System.out.println("Loading raw pixels " + "/volumes/raw");
+			final String rawPath = "/volumes/raw";
+			final RandomAccessibleInterval<UnsignedByteType> rawSource = Util.loadRaw(rawReader, rawPath, cellDimensions);
 
-		/* raw pixels */
-		final String rawPath = volumesPath + "/" + rawDataset;
-		final H5UnsignedByteSetupImageLoader raw = new H5UnsignedByteSetupImageLoader(
-				reader,
-				rawPath,
-				0,
-				cellDimensions);
-		final RandomAccessibleInterval<UnsignedByteType> rawSource = raw.getImage(0, ImgLoaderHints.LOAD_COMPLETELY);
+			System.out.println("Opening " + params.outFile + " for writing");
+			final File outFile = new File(params.outFile);
+			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
 
-		/* labels */
-		final String fragmentsPath = labelsPath + "/" + labelsDataset;
-		final RandomAccessibleInterval<LabelMultisetType> labelsSource = loadLabels(reader, fragmentsPath);
-
-		final RandomAccessibleInterval<LongType> longLabelsSource = Converters.convert(labelsSource,
-				new Converter<LabelMultisetType, LongType>() {
-					@Override
-					public void convert(final LabelMultisetType a, final LongType b) {
-						b.set(a.entrySet().iterator().next().getElement().id());
-					}
-				}, new LongType());
-
-		/* transforms */
-
-		final ArrayList<CoordinateTransform> transforms = new ArrayList<>();
-		try (final FileReader transformsReader = new FileReader(new File(params.inTransformations)))
-		{
+			final ArrayList<CoordinateTransform> transforms = new ArrayList<>();
 			final TrakEM2Export trakem2Export = new Gson().fromJson(transformsReader, TrakEM2Export.class);
 			for (final ArrayList<TransformSpec> transformList : trakem2Export.transforms) {
 				final CoordinateTransformList<CoordinateTransform> ctl = new CoordinateTransformList<>();
@@ -443,7 +338,6 @@ public class DeformToAligned {
 			}
 
 			/* deform */
-			/* raw */
 			final RandomAccessibleInterval<UnsignedByteType> rawTarget = PlanarImgs.unsignedBytes(
 					trakem2Export.width,
 					trakem2Export.height,
@@ -457,28 +351,9 @@ public class DeformToAligned {
 					rawTarget,
 					params.meshCellSize);
 
-			/* labels */
-			final RandomAccessibleInterval<LongType> labelsTarget = PlanarImgs.longs(
-					trakem2Export.width,
-					trakem2Export.height,
-					rawSource.dimension(2));
-
-			/* clear canvas by filling with outside */
-			for (final LongType t : Views.iterable(labelsTarget))
-				t.set(Label.OUTSIDE);
-
-			mapSlices(
-					Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
-					rawSource,
-					transforms,
-					new NearestNeighborInterpolatorFactory<>(),
-					labelsTarget,
-					params.meshCellSize);
-
 			/* save */
 			System.out.println("writing " + params.outFile);
 
-			final File outFile = new File(params.outFile);
 			System.out.println("  " + rawPath);
 			H5Utils.saveUnsignedByte(
 					rawTarget,
@@ -486,34 +361,67 @@ public class DeformToAligned {
 					rawPath,
 					cellDimensions);
 
-			System.out.println("  " + fragmentsPath);
-			H5Utils.saveUnsignedLong(
-					labelsTarget,
-					outFile,
-					fragmentsPath,
-					cellDimensions);
-
-			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
 			writer.float64().setArrayAttr(rawPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
-			writer.float64().setArrayAttr(fragmentsPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+
+			/* labels */
+			for (final String labelsPath : params.labels) {
+
+				final RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(labelsReader, labelsPath, cellDimensions);
+
+				final RandomAccessibleInterval<LongType> longLabelsSource = Converters.convert(labelsSource,
+						new Converter<LabelMultisetType, LongType>() {
+							@Override
+							public void convert(final LabelMultisetType a, final LongType b) {
+								b.set(a.entrySet().iterator().next().getElement().id());
+							}
+						}, new LongType());
+
+				/* deform */
+				final RandomAccessibleInterval<LongType> labelsTarget = PlanarImgs.longs(
+						trakem2Export.width,
+						trakem2Export.height,
+						rawSource.dimension(2));
+
+				/* clear canvas by filling with outside */
+				for (final LongType t : Views.iterable(labelsTarget))
+					t.set(Label.OUTSIDE);
+
+				mapSlices(
+						Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
+						rawSource, //!< as interval
+						transforms,
+						new NearestNeighborInterpolatorFactory<>(),
+						labelsTarget,
+						params.meshCellSize);
+
+				/* save */
+				System.out.println("writing " + labelsPath);
+				H5Utils.saveUnsignedLong(
+						labelsTarget,
+						outFile,
+						labelsPath,
+						cellDimensions);
+
+				writer.float64().setArrayAttr(labelsPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			}
+
 			writer.close();
 
-
-			display(
-					RealViews.affine(
-							Views.interpolate(
-									Views.extendZero(rawTarget),
-									new NearestNeighborInterpolatorFactory<>()),
-							new Scale3D(1, 1, 10)),
-					RealViews.affine(
-							Views.interpolate(
-									Views.extendValue(labelsTarget, new LongType(Label.OUTSIDE)),
-									new NearestNeighborInterpolatorFactory<>()),
-							new Scale3D(1, 1, 10)),
-					new FinalInterval(
-							trakem2Export.width,
-							trakem2Export.height,
-							rawTarget.dimension(2) * 10));
+//			Util.display(
+//					RealViews.affine(
+//							Views.interpolate(
+//									Views.extendZero(rawTarget),
+//									new NearestNeighborInterpolatorFactory<>()),
+//							new Scale3D(1, 1, 10)),
+//					RealViews.affine(
+//							Views.interpolate(
+//									Views.extendValue(labelsTarget, new LongType(Label.OUTSIDE)),
+//									new NearestNeighborInterpolatorFactory<>()),
+//							new Scale3D(1, 1, 10)),
+//					new FinalInterval(
+//							trakem2Export.width,
+//							trakem2Export.height,
+//							rawTarget.dimension(2) * 10));
 		}
 	}
 }
