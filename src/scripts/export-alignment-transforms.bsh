@@ -1,0 +1,110 @@
+import ij.IJ;
+import ini.trakem2.display.Display;
+import mpicbg.models.CoordinateTransformList;
+
+nl = "\n";
+
+void flattenTransforms(ct, list) {
+	if (CoordinateTransformList.class.isInstance(ct)) {
+		for(cti : ct.getList(null))
+			flattenTransforms(cti, list);
+	}
+	else
+		list.add(ct);
+}
+
+String createTransforms(patch) {
+	ct = patch.getFullCoordinateTransform();
+	if (ct == null)
+		return null;
+
+	transforms = new ArrayList();
+	flattenTransforms(ct, transforms);
+	
+	t = transforms.get(0);
+	b = new StringBuffer("[");
+	b.append("{");
+	b.append(nl);
+	b.append("    className : \"");
+	b.append(t.getClass().getCanonicalName());
+	b.append("\",");
+	b.append(nl);
+	
+	b.append("    dataString : \"");
+	b.append(t.toDataString());
+	b.append("\"");
+	b.append(nl);
+	b.append("  }");
+
+	for (int i = 1; i < transforms.size(); ++i) {
+		t = transforms.get(i);
+		b.append(", {");
+		b.append(nl);
+
+		b.append("    className : \"");
+		b.append(t.getClass().getCanonicalName());
+		b.append("\",");
+		b.append(nl);
+		
+		b.append("    dataString : \"");
+		b.append(t.toDataString());
+		b.append("\"");
+		b.append(nl);
+
+		b.append("  }");
+	}
+
+	b.append("]");
+	return b.toString();
+}
+
+
+String createTileSpec(patch) {
+	b = new StringBuffer("{");
+
+	b.append(nl);
+	b.append("  imageUrl : \"file:/");
+	b.append(patch.getFilePath());
+	b.append("\",");
+	b.append(nl);
+	
+	b.append("  minIntensity : ");
+	b.append(patch.getMin());
+	b.append(",");
+	b.append(nl);
+	
+	b.append("  maxIntensity : ");
+	b.append(patch.getMax());
+	
+	transforms = createTransforms(patch);
+	if (transforms != null)
+	{
+		b.append(",");
+		b.append(nl);
+		b.append(transforms);
+	}
+
+	b.append(nl);
+	b.append("}");
+
+	return b.toString();
+}
+
+layerset = Display.getFront().getLayerSet();
+bounds = layerset.get2DBounds();
+
+
+IJ.log("{");
+IJ.log("  width : " + Math.ceil(bounds.x + bounds.width) + ",");
+IJ.log("  height : " + Math.ceil(bounds.y + bounds.height) + ",");
+
+layers = layerset.getLayers();
+IJ.log("  transforms : [" );
+
+if (layers.size() > 0)
+	IJ.log(createTransforms(layers.get(0).getDisplayables().get(0)));
+
+for (int i = 1; i < layers.size(); ++i)
+	IJ.log(", " + createTransforms(layers.get(i).getDisplayables().get(0)));
+
+IJ.log("]}");
