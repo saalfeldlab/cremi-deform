@@ -85,14 +85,14 @@ public class DeformToAligned {
 			final RandomAccessibleInterval<T> target,
 			final long meshCellSize) {
 
-		final long meshRes = Math.max(2, target.dimension(0) / meshCellSize);
-		for (int z = 0; z < Math.min(sliceTransforms.size(), target.dimension(2)); ++z) {
+		final long meshRes = Math.max(2, sourceInterval.dimension(0) / meshCellSize);
+		for (long z = target.min(2); z < Math.min(sliceTransforms.size(), target.max(2) + 1); ++z) {
 
 			System.out.println( z + " " + interpolatorFactory.getClass().getSimpleName() );
 
 			final RenderTransformMesh mesh =
 					new RenderTransformMesh(
-							sliceTransforms.get(z),
+							sliceTransforms.get((int)z),
 							(int)meshRes,
 							sourceInterval.dimension(0),
 							sourceInterval.dimension(1));
@@ -148,15 +148,17 @@ public class DeformToAligned {
 				transforms.add(ctl);
 			}
 
+			final FinalInterval sourceInterval = new FinalInterval(trakem2Export.width, trakem2Export.height, trakem2Export.transforms.size());
+
 			/* deform */
-			final RandomAccessibleInterval<UnsignedByteType> rawTarget = PlanarImgs.unsignedBytes(
-					trakem2Export.width,
-					trakem2Export.height,
-					rawSource.dimension(2));
+			RandomAccessibleInterval<UnsignedByteType> rawTarget = PlanarImgs.unsignedBytes(
+					sourceInterval.dimension(0),
+					sourceInterval.dimension(1),
+					sourceInterval.dimension(2));
 
 			mapSlices(
 					Views.extendValue(rawSource, new UnsignedByteType(0)),
-					rawSource,
+					sourceInterval,
 					transforms,
 					new ClampingNLinearInterpolatorFactory<>(),
 					rawTarget,
@@ -172,7 +174,8 @@ public class DeformToAligned {
 					rawPath,
 					cellDimensions);
 
-			writer.float64().setArrayAttr(rawPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+			H5Utils.saveAttribute(new double[] { 40.0, 4.0, 4.0 }, writer, rawPath, "resolution");
+			rawTarget = null;
 
 			/* labels */
 			for (final String labelsPath : params.labels) {
