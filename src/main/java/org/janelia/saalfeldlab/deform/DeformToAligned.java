@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
@@ -27,8 +26,6 @@ import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.RealLocalizable;
-import net.imglib2.RealPositionable;
 import net.imglib2.RealRandomAccessible;
 import net.imglib2.converter.Converter;
 import net.imglib2.converter.Converters;
@@ -36,9 +33,6 @@ import net.imglib2.img.planar.PlanarImgs;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
-import net.imglib2.realtransform.RealTransform;
-import net.imglib2.realtransform.RealTransformRandomAccessible;
-import net.imglib2.realtransform.Translation2D;
 import net.imglib2.type.Type;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
@@ -72,91 +66,6 @@ public class DeformToAligned {
 	}
 
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
-
-	/**
-	 * Creates the inverse thin plate spline transform for jittered points on a
-	 * grid.
-	 *
-	 * @param interval
-	 * @param controlPointSpacing
-	 * @param jitterRadius
-	 * @return
-	 */
-	static public ThinplateSplineTransform make2DSectionJitterTransform(
-			final Random rnd,
-			final Interval interval,
-			final double controlPointSpacing,
-			final double jitterRadius) {
-
-		final ArrayList<double[]> p = new ArrayList<>();
-		final ArrayList<double[]> q = new ArrayList<>();
-
-		for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing) {
-			for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing) {
-				p.add(new double[] { x, y });
-				q.add(new double[] {
-						x + jitterRadius * (2 * rnd.nextDouble() - 1),
-						y + jitterRadius * (2 * rnd.nextDouble() - 1) });
-			}
-		}
-
-		final double[][] ps = new double[2][p.size()];
-		final double[][] qs = new double[2][q.size()];
-
-		for (int i = 0; i < p.size(); ++i) {
-			final double[] pi = p.get(i);
-			ps[0][i] = pi[0];
-			ps[1][i] = pi[1];
-			final double[] qi = q.get(i);
-			qs[0][i] = qi[0];
-			qs[1][i] = qi[1];
-		}
-		return new ThinplateSplineTransform(qs, ps);
-	}
-
-	static public ArrayList<RealTransform> make2DSectionJitterTransforms(
-			final Random rnd,
-			final Interval interval,
-			final double controlPointSpacing,
-			final double jitterRadius,
-			final double jitterChance) {
-
-		final ArrayList<RealTransform> sliceTransforms = new ArrayList<>();
-
-		RealTransform t = new Translation2D();
-		for (int z = 0; z < interval.dimension(2); ++z) {
-
-			if (rnd.nextDouble() < jitterChance)
-				t = make2DSectionJitterTransform(
-						rnd,
-						interval,
-						controlPointSpacing,
-						jitterRadius);
-
-			sliceTransforms.add(t);
-		}
-
-		return sliceTransforms;
-	}
-
-	static public <T> RandomAccessibleInterval<T> jitterSlices(
-			final RandomAccessible<T> source,
-			final Interval interval,
-			final ArrayList<? extends RealTransform> sliceTransforms,
-			final InterpolatorFactory<T, RandomAccessible<T>> interpolatorFactory) {
-
-		final ArrayList<RandomAccessibleInterval<T>> slices = new ArrayList<>();
-		for (int z = 0; z < sliceTransforms.size(); ++z) {
-			final RandomAccessible<T> slice = Views.hyperSlice(source, 2, z);
-			slices.add(
-					Views.interval(
-							new RealTransformRandomAccessible<T, RealTransform>(
-									Views.interpolate(slice, interpolatorFactory),
-									sliceTransforms.get(z)),
-							new FinalInterval(interval.dimension(0), interval.dimension(1))));
-		}
-		return Views.stack(slices);
-	}
 
 	/**
 	 * Creates a transformed version of a 3D volume by mapping each slice with
@@ -201,39 +110,6 @@ public class DeformToAligned {
 			mapping.map(sourceSlice, targetSlice, Runtime.getRuntime().availableProcessors());
 		}
 	}
-
-	/**
-	 * Generates an interval view of slices deformed by the inverse of a series
-	 * of transforms.  This is supposed to be the inverse of
-	 * {@link #mapSlices(RandomAccessible, Interval, List, InterpolatorFactory, RandomAccessibleInterval, long)}
-	 *
-	 * @param source
-	 * @param interval
-	 * @param sliceTransforms
-	 * @param interpolatorFactory
-	 * @return
-	 */
-	static public <T> RandomAccessibleInterval<T> mapInverseSlices(
-			final RandomAccessible<T> source,
-			final Interval interval,
-			final List<CoordinateTransform> sliceTransforms,
-			final InterpolatorFactory<T, RandomAccessible<T>> interpolatorFactory) {
-
-		final ArrayList<RandomAccessibleInterval<T>> slices = new ArrayList<>();
-		for (int z = 0; z < sliceTransforms.size(); ++z) {
-			final RandomAccessible<T> slice = Views.hyperSlice(source, 2, z);
-			slices.add(
-					Views.interval(
-							new RealTransformRandomAccessible<T, RealTransform>(
-									Views.interpolate(slice, interpolatorFactory),
-									new CoordinateTransformRealTransform( sliceTransforms.get(z), 2)),
-							new FinalInterval(interval.dimension(0), interval.dimension(1))));
-		}
-		return Views.stack(slices);
-	}
-
-
-
 
 	/**
 	 * @param args
