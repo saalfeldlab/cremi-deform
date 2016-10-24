@@ -54,14 +54,15 @@ import bdv.viewer.TriggerBehaviourBindings;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
 import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import gnu.trove.map.hash.TLongLongHashMap;
+import net.imglib2.FinalInterval;
+import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.algorithm.neighborhood.DiamondShape;
-import net.imglib2.img.cell.CellImg;
-import net.imglib2.img.cell.CellImgFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.realtransform.AffineTransform3D;
 import net.imglib2.realtransform.RealViews;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
+import net.imglib2.util.ConstantUtils;
 import net.imglib2.util.Intervals;
 import net.imglib2.util.Pair;
 import net.imglib2.view.RandomAccessiblePair;
@@ -96,20 +97,19 @@ public class BigCatInspect
 	final private ArrayList< H5LabelMultisetSetupImageLoader > labels = new ArrayList<>();
 	final private ArrayList< ARGBConvertedLabelPairSource > convertedLabelCanvasPairs = new ArrayList<>();
 
+	final private RandomAccessibleInterval<LongType> canvas;
+
 	final private DirtyInterval dirtyLabelsInterval = new DirtyInterval();
 
-	/* TODO this has to change into a virtual container with temporary storage */
-	private CellImg< LongType, ?, ? > canvas = null;
-
 	private BigDataViewer bdv;
-	private ModalGoldenAngleSaturatedARGBStream colorStream;
-	private FragmentSegmentAssignment assignment;
+	private final ModalGoldenAngleSaturatedARGBStream colorStream;
+	private final FragmentSegmentAssignment assignment;
 
 	private LabelPersistenceController persistenceController;
 	private AnnotationsController annotationsController;
-	private InputTriggerConfig config;
+	private final InputTriggerConfig config;
 
-	private IdService idService = new LocalIdService();
+	private final IdService idService = new LocalIdService();
 
 	/**
 	 * Writes max(a,b) into a
@@ -157,14 +157,10 @@ public class BigCatInspect
 		}
 
 		/* canvas (to which the brush paints) */
-		if ( labelReader.exists( params.canvas ) )
-			canvas = H5Utils.loadUnsignedLong( labelReader, params.canvas, cellDimensions );
-		else
-		{
-			canvas = new CellImgFactory< LongType >( cellDimensions ).create( maxRawDimensions, new LongType() );
-			for ( final LongType t : canvas )
-				t.set( Label.TRANSPARENT );
-		}
+		canvas = ConstantUtils.constantRandomAccessibleInterval(
+				new LongType(Label.TRANSPARENT),
+				3,
+				new FinalInterval(maxRawDimensions));
 
 		/* fragment segment assignment */
 		assignment = new FragmentSegmentAssignment( idService );
@@ -186,15 +182,7 @@ public class BigCatInspect
 		/* id */
 		long maxId = 0;
 		final Long nextIdObject = H5Utils.loadAttribute( labelReader, "/", "next_id" );
-		if ( nextIdObject == null )
-		{
-//			for ( final H5LabelMultisetSetupImageLoader labelLoader : labels )
-//				maxId = maxId( labelLoader, maxId );
-
-			if ( labelReader.exists( params.canvas ) )
-					maxId = maxId( canvas, maxId );
-		}
-		else
+		if ( nextIdObject != null )
 			maxId = nextIdObject.longValue() - 1;
 
 		idService.invalidate( maxId );
