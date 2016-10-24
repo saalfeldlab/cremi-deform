@@ -190,33 +190,44 @@ public class DeformToAligned {
 							}
 						}, new LongType());
 
-				/* deform */
-				final RandomAccessibleInterval<LongType> labelsTarget = PlanarImgs.longs(
-						trakem2Export.width,
-						trakem2Export.height,
-						rawSource.dimension(2));
+				H5Utils.createUnsignedLong(writer, labelsPath, sourceInterval, cellDimensions);
 
-				/* clear canvas by filling with outside */
-				for (final LongType t : Views.iterable(labelsTarget))
-					t.set(Label.OUTSIDE);
+				/* process in mellSize[2] thick slices to save some memory */
+				for (int zOffset = 0; zOffset < sourceInterval.dimension(2); zOffset += cellDimensions[2]) {
 
-				mapSlices(
-						Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
-						rawSource, //!< as interval
-						transforms,
-						new NearestNeighborInterpolatorFactory<>(),
-						labelsTarget,
-						params.meshCellSize);
+					/* deform */
+					final RandomAccessibleInterval<LongType> labelsTarget =
+							Views.translate(
+									PlanarImgs.longs(
+											sourceInterval.dimension(0),
+											sourceInterval.dimension(1),
+											Math.min(sourceInterval.dimension(2), cellDimensions[2])),
+									0,
+									0,
+									zOffset);
 
-				/* save */
-				System.out.println("writing " + labelsPath);
-				H5Utils.saveUnsignedLong(
-						labelsTarget,
-						outFile,
-						labelsPath,
-						cellDimensions);
+					/* clear canvas by filling with outside */
+					for (final LongType t : Views.iterable(labelsTarget))
+						t.set(Label.OUTSIDE);
 
-				writer.float64().setArrayAttr(labelsPath, "resolution", new double[] { 40.0, 4.0, 4.0 });
+					mapSlices(
+							Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
+							sourceInterval,
+							transforms,
+							new NearestNeighborInterpolatorFactory<>(),
+							labelsTarget,
+							params.meshCellSize);
+
+					/* save */
+					System.out.println("writing " + labelsPath);
+					H5Utils.saveUnsignedLong(
+							labelsTarget,
+							outFile,
+							labelsPath,
+							cellDimensions);
+				}
+
+				H5Utils.saveAttribute(new double[] { 40.0, 4.0, 4.0 }, writer, labelsPath, "resolution");
 			}
 
 			writer.close();
