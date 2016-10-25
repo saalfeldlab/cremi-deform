@@ -460,8 +460,14 @@ public class Deform {
 						new NearestNeighborInterpolatorFactory<>());
 			}
 
-			final String rawDatasetName = rawPath + "_" + i;
-			final String fragmentsDatasetName = fragmentsPath + "_" + i;
+			String rawDatasetName = rawPath;
+			String fragmentsDatasetName = fragmentsPath;
+
+			if (params.n > 1) {
+
+				rawDatasetName = rawDatasetName + "_" + i;
+				fragmentsDatasetName = fragmentsDatasetName + "_" + i;
+			}
 
 			System.out.println("writing " + params.outFile);
 
