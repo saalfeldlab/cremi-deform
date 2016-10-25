@@ -5,6 +5,7 @@ package org.janelia.saalfeldlab.deform;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -490,8 +491,8 @@ public class Deform {
 			double[] resData = { resolution[2], resolution[1], resolution[0] };
 			writer.float64().setArrayAttr(rawDatasetName, "resolution", resData);
 			writer.float64().setArrayAttr(fragmentsDatasetName, "resolution", resData);
-			writer.string().setAttr(rawDatasetName, "comment", "jittered with " + args.toString());
-			writer.string().setAttr(fragmentsDatasetName, "comment", "jittered with " + args.toString());
+			writer.string().setAttr(rawDatasetName, "comment", "jittered with " + Arrays.toString(args));
+			writer.string().setAttr(fragmentsDatasetName, "comment", "jittered with " + Arrays.toString(args));
 			writer.close();
 
 			// display(
