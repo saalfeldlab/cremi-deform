@@ -403,10 +403,14 @@ public class Deform {
 			RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = null;
 			RandomAccessibleInterval<LongType> deformedLongLabels = null;
 
+			boolean anisotropic = (resolution[2] != resolution[0]);
+			if (anisotropic)
+				System.out.println("Volume is anisotropic in z -- will not jitter in z-direction!");
+
 			final double[] jitterRadius = {
 					params.jitterRadius/resolution[0],
 					params.jitterRadius/resolution[1],
-					params.jitterRadius/resolution[2]
+					(anisotropic ? 0 : params.jitterRadius/resolution[2])
 			};
 			final double[] controlPointSpacing = {
 					params.controlPointSpacing/resolution[0],
