@@ -213,8 +213,8 @@ public class Deform {
 			for (double y = 0; y <= interval.dimension(1); y += controlPointSpacing[1]) {
 				for (double x = 0; x <= interval.dimension(0); x += controlPointSpacing[0]) {
 					p.add(new double[] { x, y, z });
-					final double[] transformed = new double[3];
-					baseTransform.apply(new double[] { x, y, z }, transformed);
+					final double[] transformed = new double[2];
+					baseTransform.apply(new double[] { x, y }, transformed);
 					q.add(new double[] {
 							transformed[0] + jitterRadius[0] * (2 * rnd.nextDouble() - 1),
 							transformed[1] + jitterRadius[1] * (2 * rnd.nextDouble() - 1),
