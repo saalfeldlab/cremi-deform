@@ -73,7 +73,7 @@ public class Deform {
 		public List<Double> rotate = new ArrayList<Double>();
 
 		@Parameter(names = { "--mirror", "-m" }, description = "a string like 'xy' indicating which axises to mirror")
-		public String mirror;
+		public String mirror = "";
 
 		@Parameter(names = { "--num", "-n" }, description = "number of outputs")
 		public double n = 1;
