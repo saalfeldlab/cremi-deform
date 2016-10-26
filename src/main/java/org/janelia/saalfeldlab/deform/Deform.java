@@ -234,7 +234,7 @@ public class Deform {
 	 *            Whether to mirror the x, y, and/or z axis.
 	 * @return
 	 */
-	static public ThinplateSplineTransform make3DSectionJitterTransform(
+	static public ThinplateSplineTransform make3DJitterTransform(
 			final Random rnd,
 			final Interval interval,
 			final double[] controlPointSpacing,
@@ -443,7 +443,7 @@ public class Deform {
 
 			if (params.jitter3d) {
 
-				final RealTransform transform = make3DSectionJitterTransform(
+				final RealTransform transform = make3DJitterTransform(
 						rnd,
 						rawPixels,
 						controlPointSpacing,
