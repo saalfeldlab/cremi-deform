@@ -30,20 +30,32 @@ import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import mpicbg.spim.data.generic.sequence.ImgLoaderHints;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
+import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealRandomAccessible;
 import net.imglib2.converter.Converter;
 import net.imglib2.converter.Converters;
+import net.imglib2.img.array.ArrayImg;
+import net.imglib2.img.array.ArrayImgs;
+import net.imglib2.img.array.ArrayLocalizingCursor;
+import net.imglib2.img.array.ArrayRandomAccess;
+import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
+import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.realtransform.AffineTransform2D;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
+import net.imglib2.realtransform.DeformationFieldTransform;
+import net.imglib2.realtransform.RealTransformSequence;
+import net.imglib2.realtransform.Scale3D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.real.DoubleType;
+import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.view.Views;
 
 /**
@@ -69,6 +81,9 @@ public class Deform {
 		@Parameter(names = { "--jitter3d", "-3" }, description = "perform the jitter in 3D")
 		public boolean jitter3d = false;
 
+		@Parameter(names = { "--subsampleFactor" }, description = "approximate the exact spline transform by subsampling, which will be faster")
+		public double subsampleFactor = 0;
+
 		@Parameter(names = { "--rotate", "-r" }, description = "rotate each section with the given angle in radians")
 		public List<Double> rotate = new ArrayList<Double>();
 
@@ -77,6 +92,9 @@ public class Deform {
 
 		@Parameter(names = { "--num", "-n" }, description = "number of outputs")
 		public double n = 1;
+
+		@Parameter(names = { "--onlyLut", "-l" }, description = "only store a transformation LUT int the output HDF, don't transform")
+		public boolean onlyLut = false;
 
 		// anisotropic
 
@@ -234,13 +252,14 @@ public class Deform {
 	 *            Whether to mirror the x, y, and/or z axis.
 	 * @return
 	 */
-	static public ThinplateSplineTransform make3DJitterTransform(
+	static public RealTransform make3DJitterTransform(
 			final Random rnd,
 			final Interval interval,
 			final double[] controlPointSpacing,
 			final double[] jitterRadius,
 			final double rotationAngle,
-			final boolean[] mirror) {
+			final boolean[] mirror,
+			final double subsampleFactor) {
 
 		System.out.println("Creating 3D jitter for interval " + interval);
 
@@ -279,7 +298,76 @@ public class Deform {
 				qs[d][i] = (mirror[d] ? interval.dimension(d) - (qi[d] + 1) : qi[d]);
 			}
 		}
-		return new ThinplateSplineTransform(qs, ps);
+
+		ThinplateSplineTransform tpst = new ThinplateSplineTransform(qs, ps);
+
+		if (subsampleFactor == 0)
+			return tpst;
+
+		// subsample the spline transform for faster transformation
+
+		// create a vector field
+		final int width  = (int)(interval.dimension(0)/subsampleFactor) + 1;
+		final int height = (int)(interval.dimension(1)/subsampleFactor) + 1;
+		final int depth  = (int)(interval.dimension(2)/subsampleFactor) + 1;
+		ArrayImg<DoubleType,DoubleArray> vectorField = ArrayImgs.doubles(width, height, depth, 3);
+
+		// let each location in the vector field point to the spline transformed location
+		ArrayRandomAccess<DoubleType> access = vectorField.randomAccess();
+		int[] position = new int[4]; position[3] = 0;
+		double[] target = new double[3];
+		double[] offset = new double[3];
+		for (int z = 0; z < depth; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++) {
+
+					position[0] = x;
+					position[1] = y;
+					position[2] = z;
+					access.setPosition(position);
+
+					// transform (x*f,y*f,z*f) -> (x',y',z'), where f is scaling factor
+					tpst.apply(
+							new double[]{
+									position[0]*subsampleFactor,
+									position[1]*subsampleFactor,
+									position[2]*subsampleFactor
+							},
+							target);
+
+					// get offset to target, downscaled
+					for (int d = 0; d < 3; d++)
+						offset[d] = target[d]/subsampleFactor - position[d];
+
+					// set offset as the vector at (x,y,z)
+					for (int d = 0; d < 3; d++) {
+						access.get().set(offset[d]);
+						access.fwd(3);
+					}
+				}
+
+		// create a transform from the vector field
+		DeformationFieldTransform<DoubleType> dft =
+				new DeformationFieldTransform<DoubleType>(
+						Views.interval(
+								Views.extendZero(
+										vectorField
+								),
+								new long[]{0,0,0,0},
+								new long[]{width,height,depth,3}
+						)
+				);
+
+		// create a sequence of transformations:
+		// 		1. scale down
+		//		2. apply vector field transform
+		//		3. scale up
+		RealTransformSequence subsampleTransform = new RealTransformSequence();
+		subsampleTransform.add(new Scale3D(1.0/subsampleFactor, 1.0/subsampleFactor, 1.0/subsampleFactor));
+		subsampleTransform.add(dft);
+		subsampleTransform.add(new Scale3D(subsampleFactor, subsampleFactor, subsampleFactor));
+
+		return subsampleTransform;
 	}
 
 	static public <T> RandomAccessibleInterval<T> jitterSlices(
@@ -449,7 +537,34 @@ public class Deform {
 						controlPointSpacing,
 						jitterRadius,
 						rotate,
-						mirror);
+						mirror,
+						params.subsampleFactor);
+
+				if (params.onlyLut) {
+
+					final long start = System.currentTimeMillis();
+					int size = 1;
+					for (int d = 0; d < 3; d++)
+						size *= rawPixels.dimension(d);
+					double[][] lut = new double[size][3];
+
+					System.out.println("Creating reverse transform LUT (target to source)...");
+					int j = 0;
+					for (int z = 0; z < rawPixels.dimension(2); z++)
+						for (int y = 0; y < rawPixels.dimension(1); y++)
+							for (int x = 0; x < rawPixels.dimension(0); x++) {
+								transform.apply(new double[]{x,y,z}, lut[j]);
+								j++;
+							}
+					final double time = System.currentTimeMillis() - start;
+					System.out.println("Done in " + time/1000 + "s (" + (time/size) + "ms per voxel).");
+
+					final IHDF5Writer writer = HDF5Factory.open(params.outFile);
+					writer.float64().writeMatrix("/reverse_transform_lut", lut);
+					writer.close();
+
+					System.exit(0);
+				}
 
 				deformedRawPixels = jitterVolume(
 						Views.extendValue(rawPixels, new UnsignedByteType(0)),
