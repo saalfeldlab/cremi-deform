@@ -66,7 +66,7 @@ import net.imglib2.util.ValuePair;
  *
  * @author Stephan Saalfeld <saalfelds@janelia.hhmi.org>
  */
-public class RenderTransformMesh implements InvertibleCoordinateTransform {
+public class TransformMesh implements InvertibleCoordinateTransform {
 	private static final long serialVersionUID = -5344324666263462355L;
 
 	final public double[] unitWeights = new double[] { 1.0, 1.0, 1.0 };
@@ -116,7 +116,7 @@ public class RenderTransformMesh implements InvertibleCoordinateTransform {
 		av.add(new ValuePair<AffineModel2D, double[][]>(new AffineModel2D(), pqTriangle));
 	}
 
-	protected RenderTransformMesh(final CoordinateTransform t, final int numX, final int numY, final double width, final double height) {
+	protected TransformMesh(final CoordinateTransform t, final int numX, final int numY, final double width, final double height) {
 		final int numXs = Math.max(2, numX);
 		final int numYs = Math.max(2, numY);
 
@@ -234,7 +234,7 @@ public class RenderTransformMesh implements InvertibleCoordinateTransform {
 		return Math.max(2, Util.roundPos(height / dy) + 1);
 	}
 
-	public RenderTransformMesh(final CoordinateTransform t, final int numX, final double width, final double height) {
+	public TransformMesh(final CoordinateTransform t, final int numX, final double width, final double height) {
 		this(t, numX, numY(numX, width, height), width, height);
 	}
 
@@ -468,7 +468,7 @@ public class RenderTransformMesh implements InvertibleCoordinateTransform {
 	}
 
 	@Override
-	public RenderTransformMesh createInverse() {
+	public TransformMesh createInverse() {
 		throw new UnsupportedOperationException();
 	}
 

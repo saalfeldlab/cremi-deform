@@ -90,15 +90,15 @@ public class DeformToAligned {
 
 			System.out.println( z + " " + interpolatorFactory.getClass().getSimpleName() );
 
-			final RenderTransformMesh mesh =
-					new RenderTransformMesh(
+			final TransformMesh mesh =
+					new TransformMesh(
 							sliceTransforms.get((int)z),
 							(int)meshRes,
 							sourceInterval.dimension(0),
 							sourceInterval.dimension(1));
 			mesh.updateAffines();
 
-			final RenderTransformMeshMappingWithMasks<T> mapping = new RenderTransformMeshMappingWithMasks<>(mesh);
+			final TransformMeshMapping<T> mapping = new TransformMeshMapping<>(mesh);
 
 			final RealRandomAccessible<T> sourceSlice =
 					Views.interpolate(

@@ -41,11 +41,11 @@ import net.imglib2.util.Pair;
  *
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
  */
-public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
+public class TransformMeshMapping<T extends Type<T>> {
 
-	final protected RenderTransformMesh mesh;
+	final protected TransformMesh mesh;
 
-	public RenderTransformMeshMappingWithMasks(final RenderTransformMesh mesh) {
+	public TransformMeshMapping(final TransformMesh mesh) {
 		this.mesh = mesh;
 	}
 
@@ -129,7 +129,7 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 
 		final double[] min = new double[2];
 		final double[] max = new double[2];
-		RenderTransformMesh.calculateTargetBoundingBox(pq, min, max);
+		TransformMesh.calculateTargetBoundingBox(pq, min, max);
 
 		final long minX = Math.max(0, Util.roundPos(min[0]));
 		final long minY = Math.max(0, Util.roundPos(min[1]));
@@ -142,7 +142,7 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 			targetAccess.setPosition(y, 1);
 			for (long x = minX; x <= maxX; ++x) {
 				targetAccess.setPosition(x, 0);
-				if (RenderTransformMesh.isInTargetTriangle(pq, x, y)) {
+				if (TransformMesh.isInTargetTriangle(pq, x, y)) {
 					try {
 						affine.applyInverse(sourceAccess, targetAccess);
 					} catch (final Exception e) {
@@ -194,7 +194,7 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 
 		final double[] min = new double[2];
 		final double[] max = new double[2];
-		RenderTransformMesh.calculateSourceBoundingBox(pq, min, max);
+		TransformMesh.calculateSourceBoundingBox(pq, min, max);
 
 		final long minX = Math.max(target.min(0), Util.roundPos(min[0]));
 		final long minY = Math.max(target.min(1), Util.roundPos(min[1]));
@@ -207,7 +207,7 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 			targetAccess.setPosition(y, 1);
 			for (long x = minX; x <= maxX; ++x) {
 				targetAccess.setPosition(x, 0);
-				if (RenderTransformMesh.isInSourceTriangle(pq, x, y)) {
+				if (TransformMesh.isInSourceTriangle(pq, x, y)) {
 					try {
 						affine.apply(targetAccess, sourceAccess);
 					} catch (final Exception e) {
