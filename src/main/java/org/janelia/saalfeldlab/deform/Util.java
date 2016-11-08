@@ -110,7 +110,7 @@ public class Util {
 			final IHDF5Reader reader,
 			final String dataset,
 			final int[] cellDimensions) throws IOException {
-		final RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
+		RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
 		if (reader.exists(dataset)) {
 			final H5LabelMultisetSetupImageLoader fragments =
 					new H5LabelMultisetSetupImageLoader(
@@ -121,21 +121,26 @@ public class Util {
 							cellDimensions);
 			final double[] resolution;
 			if (reader.object().hasAttribute(dataset, "offset")) {
-				final double[] offset = H5Utils.loadAttribute(reader, dataset, "offset");
-				if (reader.object().hasAttribute(dataset, "resolution")) {
-					resolution = H5Utils.loadAttribute(reader, dataset, "resolution");
-					for (int i = 0; i < offset.length; ++i)
-						offset[i] /= resolution[i];
+				try {
+					final double[] offset = H5Utils.loadAttribute(reader, dataset, "offset");
+					if (reader.object().hasAttribute(dataset, "resolution")) {
+						resolution = H5Utils.loadAttribute(reader, dataset, "resolution");
+						for (int i = 0; i < offset.length; ++i)
+							offset[i] /= resolution[i];
+					}
+					/* in CREMI, all offsets are integers */
+					final long[] longOffset = DoubleStream.of(offset).mapToLong(a -> Math.round(a)).toArray();
+					fragmentsPixels = Views.translate(
+							fragments.getImage(0, 0),
+							new long[]{
+									longOffset[2],
+									longOffset[1],
+									longOffset[0]
+							});
 				}
-				/* in CREMI, all offsets are integers */
-				final long[] longOffset = DoubleStream.of(offset).mapToLong(a -> Math.round(a)).toArray();
-				fragmentsPixels = Views.translate(
-						fragments.getImage(0, 0),
-						new long[]{
-								longOffset[2],
-								longOffset[1],
-								longOffset[0]
-						});
+				catch (final Exception e) {
+					fragmentsPixels = fragments.getImage(0, 0);
+				}
 			}
 			else
 				fragmentsPixels = fragments.getImage(0, 0);
