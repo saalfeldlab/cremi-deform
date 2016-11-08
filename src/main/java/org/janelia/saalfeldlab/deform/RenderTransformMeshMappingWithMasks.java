@@ -183,9 +183,6 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 			final RealRandomAccessible<T> source,
 			final RandomAccessibleInterval<T> target) {
 
-		final long w = target.max(0);
-		final long h = target.max(1);
-
 		final AffineModel2D a = ai.getA();
 		final AffineTransform2D affine = new AffineTransform2D();
 		final double[] coefficients = new double[6];
@@ -199,10 +196,10 @@ public class RenderTransformMeshMappingWithMasks<T extends Type<T>> {
 		final double[] max = new double[2];
 		RenderTransformMesh.calculateSourceBoundingBox(pq, min, max);
 
-		final long minX = Math.max(0, Util.roundPos(min[0]));
-		final long minY = Math.max(0, Util.roundPos(min[1]));
-		final long maxX = Math.min(w, Util.roundPos(max[0]));
-		final long maxY = Math.min(h, Util.roundPos(max[1]));
+		final long minX = Math.max(target.min(0), Util.roundPos(min[0]));
+		final long minY = Math.max(target.min(1), Util.roundPos(min[1]));
+		final long maxX = Math.min(target.max(0), Util.roundPos(max[0]));
+		final long maxY = Math.min(target.max(1), Util.roundPos(max[1]));
 
 		final RealRandomAccess<T> sourceAccess = source.realRandomAccess();
 		final RandomAccess<T> targetAccess = target.randomAccess(new FinalInterval(new long[] { minX, minY }, new long[] { maxX, maxY }));
