@@ -1,12 +1,12 @@
 #!/bin/bash
 
 java -Xmx3g -cp target/deform-0.0.1-SNAPSHOT.jar org.janelia.saalfeldlab.deform.DeformFromAligned \
- -i /home/saalfeld/tmp/concha/cremi/sample_A+_padded_20161003.aligned.hdf \
- -j /home/saalfeld/tmp/concha/cremi/sample_A+.750000.hdf \
+ -i /groups/saalfeld/saalfeldlab/cremi/2016-09-08/sample_A+_padded_20161003.aligned.hdf \
+ -j /groups/saalfeld/saalfeldlab/cremi/submissions/deform/sample_A+.750000.hdf \
  -l /main \
  -n 37,1176,955 \
- -o /home/saalfeld/tmp/concha/cremi/sample_A+.750000+.backwarped.hdf \
- -t /home/saalfeld/tmp/concha/cremi/sample_A+.transforms.json \
+ -o /groups/saalfeld/saalfeldlab/cremi/submissions/deform/sample_A+.750000.backwarped.hdf \
+ -t /groups/saalfeld/saalfeldlab/cremi/submissions/deform/sample_A+.transforms.json \
  -m 37,911,911 \
  -k 200,3072,3072 \
  -s 125,1250,1250 \
