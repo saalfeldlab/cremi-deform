@@ -3,15 +3,22 @@ Introduce distortions to labeled volumes
 
 ## Build instructions:
 
-Clone the repositories for `bigcat` (branch `cremi-inspect`) and `imglib2`:
+Clone the repository for `bigcat`
 
 * https://github.com/saalfeldlab/bigcat.git
-* https://github.com/imglib/imglib2.git
 
-In each repository, run `mvn install`. Afterwards, run
+and build it with
 
+```bash
+mvn clean install
 ```
-mvn clean compile assembly:single
+
+This is the only 'inofficial' dependency.
+
+Now you can build a fat jar with
+
+```bash
+mvn clean package
 ```
 
-in this directory to get a single `.jar` file in `targets`.
+to be found in `targets`.
