@@ -1,6 +1,6 @@
 #!/bin/bash
 
-java -Xmx3g -cp target/deform-0.0.1-SNAPSHOT.jar org.janelia.saalfeldlab.deform.BigCatInspect \
+java -Xmx3g -cp target/deform-0.0.1-SNAPSHOT.jar org.janelia.saalfeldlab.bigcat.BigCatViewer \
  -l /volumes/labels/neuron_ids \
  -i /groups/saalfeld/saalfeldlab/cremi/submissions/deform/sample_A+.750000.backwarped.sanitized.hdf 
 
