@@ -5,8 +5,8 @@ package org.janelia.saalfeldlab.deform;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -30,7 +30,6 @@ import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import mpicbg.spim.data.generic.sequence.ImgLoaderHints;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
-import net.imglib2.RandomAccess;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealRandomAccessible;
@@ -38,24 +37,21 @@ import net.imglib2.converter.Converter;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgs;
-import net.imglib2.img.array.ArrayLocalizingCursor;
 import net.imglib2.img.array.ArrayRandomAccess;
 import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
-import net.imglib2.interpolation.randomaccess.NLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.realtransform.AffineTransform2D;
+import net.imglib2.realtransform.DeformationFieldTransform;
 import net.imglib2.realtransform.RealTransform;
 import net.imglib2.realtransform.RealTransformRandomAccessible;
-import net.imglib2.realtransform.DeformationFieldTransform;
 import net.imglib2.realtransform.RealTransformSequence;
 import net.imglib2.realtransform.Scale3D;
 import net.imglib2.type.numeric.ARGBType;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
-import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.view.Views;
 
 /**
@@ -105,13 +101,15 @@ public class Deform {
 
 	final static private int[] cellDimensions = new int[] { 64, 64, 8 };
 
-	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(final IHDF5Reader reader,
-			final String dataset, double[] rawResolution) throws IOException {
+	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(
+			final IHDF5Reader reader,
+			final String dataset,
+			final double[] rawResolution) throws IOException {
 		final RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
 		if (reader.exists(dataset)) {
 			final double[] resolution = readResolution(reader, dataset, rawResolution);
 			final H5LabelMultisetSetupImageLoader fragments = new H5LabelMultisetSetupImageLoader(reader, null, dataset,
-					1, cellDimensions, resolution);
+					1, cellDimensions, resolution, new double[]{0, 0, 0});
 			fragmentsPixels = fragments.getImage(0, 0);
 		} else {
 			System.out.println("no labels found cooresponding to requested dataset '" + dataset + "'");
@@ -299,7 +297,7 @@ public class Deform {
 			}
 		}
 
-		ThinplateSplineTransform tpst = new ThinplateSplineTransform(qs, ps);
+		final ThinplateSplineTransform tpst = new ThinplateSplineTransform(qs, ps);
 
 		if (subsampleFactor == 0)
 			return tpst;
@@ -310,13 +308,13 @@ public class Deform {
 		final int width  = (int)(interval.dimension(0)/subsampleFactor) + 1;
 		final int height = (int)(interval.dimension(1)/subsampleFactor) + 1;
 		final int depth  = (int)(interval.dimension(2)/subsampleFactor) + 1;
-		ArrayImg<DoubleType,DoubleArray> vectorField = ArrayImgs.doubles(width, height, depth, 3);
+		final ArrayImg<DoubleType,DoubleArray> vectorField = ArrayImgs.doubles(width, height, depth, 3);
 
 		// let each location in the vector field point to the spline transformed location
-		ArrayRandomAccess<DoubleType> access = vectorField.randomAccess();
-		int[] position = new int[4]; position[3] = 0;
-		double[] target = new double[3];
-		double[] offset = new double[3];
+		final ArrayRandomAccess<DoubleType> access = vectorField.randomAccess();
+		final int[] position = new int[4]; position[3] = 0;
+		final double[] target = new double[3];
+		final double[] offset = new double[3];
 		for (int z = 0; z < depth; z++)
 			for (int y = 0; y < height; y++)
 				for (int x = 0; x < width; x++) {
@@ -347,7 +345,7 @@ public class Deform {
 				}
 
 		// create a transform from the vector field
-		DeformationFieldTransform<DoubleType> dft =
+		final DeformationFieldTransform<DoubleType> dft =
 				new DeformationFieldTransform<DoubleType>(
 						Views.interval(
 								Views.extendZero(
@@ -362,7 +360,7 @@ public class Deform {
 		// 		1. scale down
 		//		2. apply vector field transform
 		//		3. scale up
-		RealTransformSequence subsampleTransform = new RealTransformSequence();
+		final RealTransformSequence subsampleTransform = new RealTransformSequence();
 		subsampleTransform.add(new Scale3D(1.0/subsampleFactor, 1.0/subsampleFactor, 1.0/subsampleFactor));
 		subsampleTransform.add(dft);
 		subsampleTransform.add(new Scale3D(subsampleFactor, subsampleFactor, subsampleFactor));
@@ -375,7 +373,7 @@ public class Deform {
 			final Interval interval,
 			final ArrayList<? extends RealTransform> sliceTransforms,
 			final InterpolatorFactory<T, RandomAccessible<T>> interpolatorFactory,
-			boolean mirrorZ) {
+			final boolean mirrorZ) {
 
 		final ArrayList<RandomAccessibleInterval<T>> slices = new ArrayList<>();
 		for (int z = 0; z < sliceTransforms.size(); ++z) {
@@ -434,8 +432,8 @@ public class Deform {
 			return defaultResolution;
 		}
 
-		double[] data = reader.getDoubleArrayAttribute(dataset, "resolution");
-		double[] resolution = { data[2], data[1], data[0] };
+		final double[] data = reader.getDoubleArrayAttribute(dataset, "resolution");
+		final double[] resolution = { data[2], data[1], data[0] };
 
 		System.out.println("Using resolution of (" + resolution[0] + ", " +
 				resolution[1] + ", " + resolution[2] + ") found in dataset " +
@@ -478,7 +476,8 @@ public class Deform {
 				rawPath,
 				0,
 				cellDimensions,
-				resolution);
+				resolution,
+				new double[]{0, 0, 0});
 		final RandomAccessibleInterval<UnsignedByteType> rawPixels = raw.getImage(0, ImgLoaderHints.LOAD_COMPLETELY);
 
 		/* labels */
@@ -507,7 +506,7 @@ public class Deform {
 			RandomAccessibleInterval<UnsignedByteType> deformedRawPixels = null;
 			RandomAccessibleInterval<LongType> deformedLongLabels = null;
 
-			boolean anisotropic = (resolution[2] != resolution[0]);
+			final boolean anisotropic = (resolution[2] != resolution[0]);
 			if (anisotropic)
 				System.out.println("Volume is anisotropic in z -- will not jitter in z-direction!");
 
@@ -546,7 +545,7 @@ public class Deform {
 					int size = 1;
 					for (int d = 0; d < 3; d++)
 						size *= rawPixels.dimension(d);
-					double[][] lut = new double[size][3];
+					final double[][] lut = new double[size][3];
 
 					System.out.println("Creating reverse transform LUT (target to source)...");
 					int j = 0;
@@ -629,7 +628,7 @@ public class Deform {
 					cellDimensions);
 
 			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
-			double[] resData = { resolution[2], resolution[1], resolution[0] };
+			final double[] resData = { resolution[2], resolution[1], resolution[0] };
 			writer.float64().setArrayAttr(rawDatasetName, "resolution", resData);
 			writer.float64().setArrayAttr(fragmentsDatasetName, "resolution", resData);
 			writer.string().setAttr(rawDatasetName, "comment", "jittered with " + Arrays.toString(args));
