@@ -53,7 +53,7 @@ public class DeformToAligned {
 		public String inFileLabels = null;
 
 		@Parameter( names = { "--label", "-l" }, description = "label dataset" )
-		public List<String> labels = Arrays.asList( new String[]{"/volumes/labels/clefts", "/volumes/labels/neuron_ids"});
+		public List<String> labels = Arrays.asList( new String[]{"/volumes/labels/neuron_ids","/volumes/labels/clefts","/volumes/labels/clefts_corrected"});
 
 		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
 		public String outFile;
@@ -180,6 +180,7 @@ public class DeformToAligned {
 			/* labels */
 			for (final String labelsPath : params.labels) {
 
+                System.out.println("transforming: " + labelsPath);
 				final RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(labelsReader, labelsPath, cellDimensions);
 
 				final RandomAccessibleInterval<LongType> longLabelsSource = Converters.convert(labelsSource,
@@ -219,12 +220,17 @@ public class DeformToAligned {
 							params.meshCellSize);
 
 					/* save */
+                    // FIXME This threw the following exception
+                    // Exception in thread "main" ncsa.hdf.hdf5lib.exceptions.HDF5FunctionArgumentException: Invalid arguments to routine:Bad value ["H5Dio.c line 686 in H5D__write(): src dataspace has invalid selection"]
+                    // which I have 'fixed' by now with replacing 'saveUnsignedLong' with 'saveLong'
+                    // maybe different HDF5 versions?
 					System.out.println("writing " + labelsPath);
-					H5Utils.saveUnsignedLong(
+					H5Utils.saveLong(
 							labelsTarget,
 							outFile,
 							labelsPath,
 							cellDimensions);
+					System.out.println("done!");
 				}
 
 				H5Utils.saveAttribute(new double[] { 40.0, 4.0, 4.0 }, writer, labelsPath, "resolution");
