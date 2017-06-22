@@ -1,20 +1,17 @@
 package org.janelia.saalfeldlab.deform;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 
-import bdv.bigcat.label.FragmentSegmentAssignment;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
 import bdv.labels.labelset.LabelMultisetType;
-import bdv.util.IdService;
-import bdv.util.LocalIdService;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
+import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import net.imglib2.Cursor;
 import net.imglib2.RandomAccessibleInterval;
@@ -33,59 +30,55 @@ public class FlattenNeuronIds
 	static private class Parameters
 	{
 		@Parameter( names = { "--infile", "-i" }, description = "Input file path" )
-		public String inFile = "";
+		public String inFile;
+
+		@Parameter( names = { "--outfile", "-o" }, description = "Output file path" )
+		public String outFile;
 
 		@Parameter( names = { "--label", "-l" }, description = "label dataset" )
-		public String label = "/volumes/labels/neuron_ids";
+		public String label;
 
 		@Parameter( names = { "--slice", "-s" }, description = "slices to be cleared from any labels" )
 		public List< Long > badSlices = Arrays.asList( new Long[ 0 ] );
 
 		@Parameter( names = { "--canvas", "-c" }, description = "canvas dataset" )
-		public String canvas = "/volumes/labels/painted_neuron_ids";
+		public String canvas;
 
 		@Parameter( names = { "--export", "-e" }, description = "export dataset" )
 		public String export = "/volumes/labels/merged_neuron_ids";
+
+		public void init()
+		{
+			if ( outFile == null )
+				outFile = inFile;
+		}
 	}
 
 	final static private int[] cellDimensions = new int[]{ 64, 64, 8 };
-
-	final private ArrayList< H5LabelMultisetSetupImageLoader > labels = new ArrayList<>();
-
-	private FragmentSegmentAssignment assignment;
-
-	private IdService idService = new LocalIdService();
-
-	/**
-	 * Writes max(a,b) into a
-	 *
-	 * @param a
-	 * @param b
-	 */
-	final static private void max( final long[] a, final long[] b )
-	{
-		for ( int i = 0; i < a.length; ++i )
-			if ( b[ i ] > a[ i ] )
-				a[ i ] = b[ i ];
-	}
 
 	public static void main( final String[] args ) throws Exception
 	{
 		final Parameters params = new Parameters();
 		new JCommander( params, args );
+		params.init();
 
 		System.out.println( "Opening " + params.inFile );
-		final IHDF5Writer writer = HDF5Factory.open( params.inFile );
+		final IHDF5Writer writer = HDF5Factory.open( params.outFile );
+		final IHDF5Reader reader;
+		if ( params.inFile == params.outFile )
+			reader = writer;
+		else
+			reader = HDF5Factory.openForReading( params.inFile );
 
 		/* dimensions */
 		final long[] maxRawDimensions = new long[]{ 0, 0, 0 };
 
 		/* labels */
 		final H5LabelMultisetSetupImageLoader labelLoader;
-		if ( writer.exists( params.label ) )
+		if ( reader.exists( params.label ) )
 		{
 			 labelLoader = new H5LabelMultisetSetupImageLoader(
-							writer,
+							reader,
 							null,
 							params.label,
 							1,
@@ -100,16 +93,23 @@ public class FlattenNeuronIds
 
 		/* resolution */
 		final double[] resolution;
-		if ( writer.object().hasAttribute( params.label, "resolution" ) )
-			resolution = writer.float64().getArrayAttr( params.label, "resolution" );
+		if ( reader.object().hasAttribute( params.label, "resolution" ) )
+			resolution = reader.float64().getArrayAttr( params.label, "resolution" );
 		else
 			resolution = new double[] { 1, 1, 1 };
 
+		/* offset */
+		final double[] offset;
+		if ( reader.object().hasAttribute( params.label, "offset" ) )
+			offset = reader.float64().getArrayAttr( params.label, "resolution" );
+		else
+			offset = new double[] { 0, 0, 0 };
+
 		/* canvas (to which the brush paints) */
 		/* TODO this has to change into a virtual container with temporary storage */
-		CellImg< LongType, ?, ? > canvas = null;
-		if ( writer.exists( params.canvas ) )
-			canvas = H5Utils.loadUnsignedLong( writer, params.canvas, cellDimensions );
+		final CellImg< LongType, ?, ? > canvas;
+		if ( params.canvas != null && reader.exists( params.canvas ) )
+			canvas = H5Utils.loadUnsignedLong( reader, params.canvas, cellDimensions );
 		else
 		{
 			canvas = new CellImgFactory< LongType >( cellDimensions ).create( maxRawDimensions, new LongType() );
@@ -151,7 +151,7 @@ public class FlattenNeuronIds
 						converter,
 						new LongType() );
 
-		System.out.println( "Writing merged labels into canvas..." );
+		System.out.println( "Reading merged labels into canvas..." );
 
 		/* copy merge into canvas */
 		final Cursor< LongType > sourceCursor = Views.flatIterable( source ).cursor();
@@ -171,7 +171,7 @@ public class FlattenNeuronIds
 			System.out.println( "Clearing bad slice " + z + "..." );
 			final IntervalView< LongType > slice = Views.hyperSlice( canvas, 2, z );
 			for ( final LongType t : slice )
-				t.set( Label.TRANSPARENT );
+				t.set( Label.INVALID );
 		}
 
 		System.out.println( "Saving " + params.export + "..." );
@@ -180,6 +180,7 @@ public class FlattenNeuronIds
 		H5Utils.saveAttribute( resolution, writer, params.export, "resolution" );
 
 		writer.close();
+		reader.close();
 
 		System.out.println( "Done" );
 	}
