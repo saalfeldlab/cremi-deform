@@ -4,13 +4,13 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<parent>
-		<groupId>sc.fiji</groupId>
-		<artifactId>pom-bigdataviewer</artifactId>
-		<version>4.0.1</version>
+		<artifactId>pom-scijava</artifactId>
+		<version>19.0.0</version>
+		<groupId>org.scijava</groupId>
 	</parent>
 
 	<artifactId>deform</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.2-SNAPSHOT</version>
 
 	<name>Deform</name>
 	<description>Deform HDF5 sources</description>
@@ -68,11 +68,6 @@
 		<dependency>
 			<groupId>net.imglib2</groupId>
 			<artifactId>imglib2-realtransform</artifactId>
-			<version>2.0.0-beta-38</version>
-		</dependency>
-		<dependency>
-			<groupId>org.scijava</groupId>
-			<artifactId>ui-behaviour</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>
@@ -86,7 +81,6 @@
 		<dependency>
 			<groupId>sc.fiji</groupId>
 			<artifactId>bigdataviewer-vistools</artifactId>
-			<version>1.0.0-beta-3-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>sc.fiji</groupId>
@@ -118,6 +112,21 @@
 			<groupId>org.janelia.render</groupId>
 			<artifactId>render-app</artifactId>
 			<version>0.3.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5-imglib2</artifactId>
+			<version>2.0.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5</artifactId>
+			<version>2.0.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.janelia.saalfeldlab</groupId>
+			<artifactId>n5-hdf5</artifactId>
+			<version>1.0.0</version>
 		</dependency>
 	</dependencies>
 
@@ -234,4 +243,5 @@
 
 		</plugins>
 	</build>
+	<groupId>org.saalfeldlab.cremi</groupId>
 </project>
