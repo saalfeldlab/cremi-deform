@@ -1,0 +1,16 @@
+#!/bin/bash
+
+java -Xmx16g -cp target/deform-0.0.2-SNAPSHOT.jar org.janelia.saalfeldlab.deform.DeformFromAligned \
+ -j /nrs/saalfeld/heinrichl/synapses/cremi_all_1213_01/prediction_cremi_warped_sampleA+_160000.n5 \
+ -l /syncleft_dist \
+ -e /volumes/labels/clefts \
+ --labelssourceoffset 0,0,0 \
+ -o /groups/saalfeld/saalfeldlab/cremi/submissions/deform/clefts/sample_A+.clefts.160000.0.15.backwarped.hdf \
+ -t /groups/saalfeld/saalfeldlab/cremi/submissions/deform/sample_A+.transforms.json \
+ -r 40,4,4 \
+ --targetoffset 37,911,911 \
+ --transformsize 200,3072,3072 \
+ --targetsize 125,1250,1250 \
+ -c 64 \
+ -x 0.15
+

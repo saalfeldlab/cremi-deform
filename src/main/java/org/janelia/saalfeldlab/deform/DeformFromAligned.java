@@ -6,20 +6,30 @@ package org.janelia.saalfeldlab.deform;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.janelia.saalfeldlab.n5.DataType;
+import org.janelia.saalfeldlab.n5.GzipCompression;
+import org.janelia.saalfeldlab.n5.N5FSReader;
+import org.janelia.saalfeldlab.n5.N5FSWriter;
+import org.janelia.saalfeldlab.n5.N5Reader;
+import org.janelia.saalfeldlab.n5.N5Writer;
+import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
+import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Writer;
+import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
 
-import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
-import bdv.labels.labelset.LabelMultisetType;
-import ch.systemsx.cisd.hdf5.HDF5Factory;
-import ch.systemsx.cisd.hdf5.IHDF5Reader;
-import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import mpicbg.trakem2.transform.CoordinateTransform;
 import mpicbg.trakem2.transform.CoordinateTransformList;
 import net.imglib2.FinalInterval;
@@ -27,17 +37,20 @@ import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealRandomAccessible;
-import net.imglib2.converter.Converter;
 import net.imglib2.converter.Converters;
 import net.imglib2.img.basictypeaccess.array.ByteArray;
+import net.imglib2.img.basictypeaccess.array.LongArray;
 import net.imglib2.img.planar.PlanarImg;
+import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.planar.PlanarImgs;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.type.Type;
-import net.imglib2.type.numeric.integer.LongType;
+import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.integer.UnsignedLongType;
+import net.imglib2.util.Intervals;
 import net.imglib2.view.Views;
 
 /**
@@ -48,7 +61,7 @@ public class DeformFromAligned {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
+		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 or N5 file name")
 		public String inFile = null;
 
 		@Parameter(names = { "--infile_labels", "-j" }, description = "input CREMI-format HDF5 file name")
@@ -57,10 +70,13 @@ public class DeformFromAligned {
 		@Parameter( names = { "--label", "-l" }, description = "label dataset" )
 		public List<String> labels = Arrays.asList( new String[]{"/volumes/labels/clefts", "/volumes/labels/neuron_ids"});
 
-		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
+		@Parameter( names = { "--labelexportname", "-e" }, description = "label dataset export name" )
+		public List<String> labelExportNames = new ArrayList<>();
+
+		@Parameter(names = { "--outfile", "-o" }, required=true, description = "output CREMI-format HDF5 or N5 file name")
 		public String outFile;
 
-		@Parameter(names = { "--intransform", "-t" }, description = "input JSON export of alignment transofomations, formatted as a list of lists")
+		@Parameter(names = { "--intransform", "-t" }, required=true, description = "input JSON export of alignment transofomations, formatted as a list of lists")
 		public String inTransformations;
 
 		@Parameter(names = { "--targetoffset", "-m" }, description = "offset (min coordinate of the output interval, CSV in numpy order)")
@@ -80,6 +96,10 @@ public class DeformFromAligned {
 
 		@Parameter(names = { "--meshcellsize", "-c" }, description = "mesh cell size for rendering the output")
 		public long meshCellSize;
+
+		@Parameter(names = { "--threshold", "-x" }, description = "threshold for label input")
+		public Double threshold = null;
+
 
 		public static long[] getReorderedLongArray(final String csv) {
 			final String[] valueStrings = csv.split(",");
@@ -122,7 +142,7 @@ public class DeformFromAligned {
 				return getReorderedLongArray(labelsSourceOffset);
 		}
 
-		public long[] getMax() {
+		public long[] getTargetMax() {
 			final long[] min = getTargetMin();
 			final long[] dimensions = getTargetDimensions();
 			final long[] max = new long[ min.length ];
@@ -188,24 +208,29 @@ public class DeformFromAligned {
 	 * @throws IllegalAccessException
 	 * @throws InstantiationException
 	 * @throws ClassNotFoundException
+	 * @throws ExecutionException
+	 * @throws InterruptedException
 	 */
-	public static void main(final String... args) throws IOException, ClassNotFoundException, InstantiationException, IllegalAccessException {
+	public static void main(final String... args) throws IOException, ClassNotFoundException, InstantiationException, IllegalAccessException, InterruptedException, ExecutionException {
 
 		final Parameters params = new Parameters();
 		new JCommander(params, args);
 
 		try (final FileReader transformsReader = new FileReader(new File(params.inTransformations))) {
 
+			final boolean h5Input = params.inFile == null ? false : Files.isRegularFile(Paths.get(params.inFile));
+			final boolean h5InputLabels = params.inFileLabels == null ? false : Files.isRegularFile(Paths.get(params.inFileLabels));
+			final boolean h5Output = params.outFile.endsWith(".h5") || params.outFile.endsWith(".hdf5") || params.outFile.endsWith(".hdf");
+
 			System.out.println("Opening " + params.inFile);
-			final IHDF5Reader rawReader = params.inFile == null ? null : HDF5Factory.openForReading(params.inFile);
-			final IHDF5Reader labelsReader = params.inFileLabels == null ? rawReader : HDF5Factory.openForReading(params.inFileLabels);
+			final N5Reader rawReader = params.inFile == null ? null : h5Input ? new N5HDF5Reader(params.inFile, 64) : new N5FSReader(params.inFile);
+			final N5Reader labelsReader = params.inFileLabels == null ? null : h5InputLabels ? new N5HDF5Reader(params.inFileLabels, 64) : new N5FSReader(params.inFileLabels);
 
 			System.out.println("Opening " + params.outFile + " for writing");
-			final File outFile = new File(params.outFile);
-			final IHDF5Writer writer = HDF5Factory.open(params.outFile);
+			final N5Writer writer = h5Output ? new N5HDF5Writer(params.outFile, 64) : new N5FSWriter(params.outFile);
 
 			final FinalInterval targetInterval =
-					new FinalInterval(params.getTargetMin(), params.getMax());
+					new FinalInterval(params.getTargetMin(), params.getTargetMax());
 
 			final FinalInterval sourceInterval =
 					new FinalInterval(params.getTransformDimensions());
@@ -226,12 +251,12 @@ public class DeformFromAligned {
 			if (rawReader != null) {
 				System.out.println("Loading raw pixels " + "/volumes/raw");
 				final String rawPath = "/volumes/raw";
-				final RandomAccessibleInterval<UnsignedByteType> rawSource = Util.loadRaw(rawReader, rawPath, cellDimensions);
+				final RandomAccessibleInterval<UnsignedByteType> rawSource = N5Utils.open(rawReader, rawPath);
 
 				/* deform */
-				PlanarImg<UnsignedByteType, ByteArray> rawTarget = PlanarImgs.unsignedBytes(params.getTargetDimensions());
+				final PlanarImg<UnsignedByteType, ByteArray> rawTarget = PlanarImgs.unsignedBytes(params.getTargetDimensions());
 
-				RandomAccessibleInterval<UnsignedByteType> rawTargetInterval =
+				final RandomAccessibleInterval<UnsignedByteType> rawTargetInterval =
 						Views.translate(
 								rawTarget,
 								params.getTargetMin());
@@ -246,43 +271,36 @@ public class DeformFromAligned {
 
 				/* save */
 				System.out.println("writing " + params.outFile);
-
-				H5Utils.createUnsignedByte(
-						writer,
-						rawPath,
-						targetInterval,
-						cellDimensions);
-
 				System.out.println("  " + rawPath);
-				H5Utils.saveUnsignedByte(
-						rawTarget,
-						outFile,
-						rawPath,
-						cellDimensions);
+				final ExecutorService exec = h5Output ? Executors.newSingleThreadExecutor() : Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+				N5Utils.save(rawTarget, writer, rawPath, cellDimensions, new GzipCompression(), exec);
+				writer.setAttribute(rawPath, "resolution", h5Output ? new double[] { resolution[2], resolution[1], resolution[0] } : resolution);
+				writer.setAttribute(rawPath, "offset", h5Output ? new double[] {
+								targetInterval.min(2) * resolution[2],
+								targetInterval.min(1) * resolution[1],
+								targetInterval.min(0) * resolution[0] } : new double[] {
 
-				H5Utils.saveAttribute(
-						new double[] { resolution[2], resolution[1], resolution[0] },
-						writer,
-						rawPath,
-						"resolution");
-				H5Utils.saveAttribute(
-						new double[] {
-								rawTarget.min(2) * resolution[2],
-								rawTarget.min(1) * resolution[1],
-								rawTarget.min(0) * resolution[0] },
-						writer,
-						rawPath,
-						"offset");
+								targetInterval.min(0) * resolution[0],
+								targetInterval.min(1) * resolution[1],
+								targetInterval.min(2) * resolution[2] });
+				exec.shutdown();
 			}
 
 			/* labels */
 			if (labelsReader != null) {
 
-				for (final String labelsPath : params.labels) {
+				for (int i = 0; i < params.labels.size(); ++i) {
 
-					System.out.println("labels " + labelsPath);
+					final String labelsPath = params.labels.get(i);
+					final String labelsExportPath = i < params.labelExportNames.size() ? params.labelExportNames.get(i) : labelsPath;
 
-					RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(labelsReader, labelsPath, cellDimensions);
+					System.out.println("labels " + labelsPath + " > " + labelsExportPath);
+
+					RandomAccessibleInterval<RealType<?>> labelsSource = (RandomAccessibleInterval)N5Utils.open(labelsReader, labelsPath);
+					for (int d = 0; d < labelsSource.numDimensions();)
+						if (labelsSource.dimension(d) == 1)
+							labelsSource = Views.hyperSlice(labelsSource, d, 0);
+						else ++d;
 
 					/* override label source offset */
 					final long[] labelsSourceMin = params.getLabelsSourceMin();
@@ -293,40 +311,52 @@ public class DeformFromAligned {
 								labelsSourceMin[1] - labelsSource.min(1),
 								labelsSourceMin[2] - labelsSource.min(2));
 
-					final RandomAccessibleInterval<LongType> longLabelsSource = Converters.convert(labelsSource,
-							new Converter<LabelMultisetType, LongType>() {
-								@Override
-								public void convert(final LabelMultisetType a, final LongType b) {
-									b.set(a.entrySet().iterator().next().getElement().id());
-								}
-							}, new LongType());
+					final RandomAccessibleInterval<UnsignedLongType> longLabelsSource;
+					if (params.threshold != null) {
+						final double threshold = params.threshold;
+						longLabelsSource = Converters.convert(
+								labelsSource,
+								(a, b) -> {
+									final double v = a.getRealDouble();
+									b.set(v < params.threshold ? Label.TRANSPARENT : 1);
+								},
+								new UnsignedLongType());
+					} else
+						longLabelsSource = (RandomAccessibleInterval)labelsSource;
 
-					H5Utils.createUnsignedLong(
-							writer,
-							labelsPath,
-							targetInterval,
-							cellDimensions);
+
+					writer.createDataset(
+							labelsExportPath,
+							Intervals.dimensionsAsLongArray(targetInterval),
+							cellDimensions,
+							DataType.UINT64,
+							new GzipCompression());
+
+					final ExecutorService exec = h5Output ? Executors.newSingleThreadExecutor() : Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
 					/* process in cellSize[2] thick slices to save some memory */
 					for (long zOffset = targetInterval.min(2); zOffset <= targetInterval.max(2); zOffset += cellDimensions[2]) {
 
 						/* deform */
-						final RandomAccessibleInterval<LongType> labelsTarget =
+						@SuppressWarnings("unchecked")
+						final RandomAccessibleInterval<UnsignedLongType> labelsTarget =
 								Views.translate(
-										PlanarImgs.longs(
-												targetInterval.dimension(0),
-												targetInterval.dimension(1),
-												Math.min(targetInterval.max(2) - zOffset + 1, cellDimensions[2])),
+										(PlanarImg<UnsignedLongType, LongArray>) new PlanarImgFactory<UnsignedLongType>().create(
+												new long[] {
+														targetInterval.dimension(0),
+														targetInterval.dimension(1),
+														Math.min(targetInterval.max(2) - zOffset + 1, cellDimensions[2])},
+												new UnsignedLongType()),
 										targetInterval.min(0),
 										targetInterval.min(1),
 										zOffset);
 
 						/* clear canvas by filling with outside */
-						for (final LongType t : Views.iterable(labelsTarget))
+						for (final UnsignedLongType t : Views.iterable(labelsTarget))
 							t.set(Label.OUTSIDE);
 
 						mapInverseSlices(
-								Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
+								Views.extendValue(longLabelsSource, new UnsignedLongType(Label.OUTSIDE)),
 								sourceInterval,
 								transforms,
 								new NearestNeighborInterpolatorFactory<>(),
@@ -335,34 +365,30 @@ public class DeformFromAligned {
 
 						/* save */
 						System.out.println("writing " + labelsPath);
-						H5Utils.saveUnsignedLong(
-								Views.translate(
-										labelsTarget,
-										-labelsTarget.min(0),
-										-labelsTarget.min(1),
-										-targetInterval.min(2)),
-								outFile,
-								labelsPath,
-								cellDimensions);
+						N5Utils.saveBlock(
+								labelsTarget,
+								writer,
+								labelsExportPath,
+								new long[] {
+										0,
+										0,
+										(zOffset - targetInterval.min(2)) / cellDimensions[2]},
+								exec);
 					}
 
-					H5Utils.saveAttribute(
-							new double[] { resolution[2], resolution[1], resolution[0] },
-							writer,
-							labelsPath,
-							"resolution");
-					H5Utils.saveAttribute(
-							new double[] {
-									targetInterval.min(2) * resolution[2],
-									targetInterval.min(1) * resolution[1],
-									targetInterval.min(0) * resolution[0] },
-							writer,
-							labelsPath,
-							"offset");
+					exec.shutdown();
+
+					writer.setAttribute(labelsExportPath, "resolution", h5Output ? new double[]{resolution[2], resolution[1], resolution[0]} : resolution);
+					writer.setAttribute(labelsExportPath, "offset", h5Output ? new double[]{
+							targetInterval.min(2) * resolution[2],
+							targetInterval.min(1) * resolution[1],
+							targetInterval.min(0) * resolution[0]} : new double[]{
+
+							targetInterval.min(0) * resolution[0],
+							targetInterval.min(1) * resolution[1],
+							targetInterval.min(2) * resolution[2]});
 				}
 			}
-
-			writer.close();
 		}
 	}
 }

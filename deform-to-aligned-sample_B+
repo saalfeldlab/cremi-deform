@@ -1,0 +1,14 @@
+#!/bin/bash
+
+java -Xmx92g -cp deform-0.0.1-SNAPSHOT.jar org.janelia.saalfeldlab.deform.DeformToAligned \
+--infile '/groups/saalfeld/home/saalfelds/cremi/sample_B+_padded_20160601.hdf' \
+--infile_labels '/groups/saalfeld/home/saalfelds/cremi/sample_B+_20170424.hdf' \
+--infile_annotations '/groups/saalfeld/home/saalfelds/cremi/sample_B+_20170424.hdf' \
+--label_annotation_offset '1480.0,3644.0,3644.0' \
+--raw '/volumes/raw' \
+--label '/volumes/labels/clefts' \
+--label '/volumes/labels/neuron_ids' \
+--intransformations '/groups/saalfeld/home/saalfelds/cremi/sample_B+_transforms.json' \
+--meshcellsize 64 \
+--outfile '/groups/saalfeld/home/saalfelds/cremi/sample_B+_padded_20170424.aligned.hdf'
+
