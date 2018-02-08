@@ -21,6 +21,7 @@ import java.util.stream.DoubleStream;
 
 import bdv.bigcat.label.FragmentSegmentAssignment;
 import bdv.bigcat.ui.GoldenAngleSaturatedARGBStream;
+import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
 import bdv.img.h5.H5UnsignedByteSetupImageLoader;
 import bdv.img.h5.H5Utils;
@@ -62,7 +63,8 @@ public class Util {
 	final static public RandomAccessibleInterval<UnsignedByteType> loadRaw(
 			final IHDF5Reader reader,
 			final String dataset,
-			final int[] cellDimensions) throws IOException {
+			final int[] cellDimensions,
+			final VolatileGlobalCellCache cache) throws IOException {
 		final RandomAccessibleInterval<UnsignedByteType> rawPixels;
 		if (reader.exists(dataset)) {
 			final H5UnsignedByteSetupImageLoader raw =
@@ -70,7 +72,8 @@ public class Util {
 							reader,
 							dataset,
 							0,
-							cellDimensions);
+							cellDimensions,
+							cache);
 			final double[] resolution;
 			if (reader.object().hasAttribute(dataset, "offset")) {
 				final double[] offset = H5Utils.loadAttribute(reader, dataset, "offset");
@@ -109,7 +112,8 @@ public class Util {
 	final static public RandomAccessibleInterval<LabelMultisetType> loadLabels(
 			final IHDF5Reader reader,
 			final String dataset,
-			final int[] cellDimensions) throws IOException {
+			final int[] cellDimensions,
+			final VolatileGlobalCellCache cache) throws IOException {
 		RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
 		if (reader.exists(dataset)) {
 			final H5LabelMultisetSetupImageLoader fragments =
@@ -118,7 +122,8 @@ public class Util {
 							null,
 							dataset,
 							1,
-							cellDimensions);
+							cellDimensions,
+							cache);
 			final double[] resolution;
 			if (reader.object().hasAttribute(dataset, "offset")) {
 				try {

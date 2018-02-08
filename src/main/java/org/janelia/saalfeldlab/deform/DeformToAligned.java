@@ -7,8 +7,13 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+
+import org.janelia.saalfeldlab.n5.N5Reader;
+import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
+import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
@@ -19,10 +24,8 @@ import bdv.bigcat.annotation.Annotations;
 import bdv.bigcat.annotation.AnnotationsHdf5Store;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
-import bdv.labels.labelset.LabelMultisetType;
 import bdv.util.LocalIdService;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
-import ch.systemsx.cisd.hdf5.IHDF5Reader;
 import ch.systemsx.cisd.hdf5.IHDF5Writer;
 import mpicbg.trakem2.transform.CoordinateTransform;
 import mpicbg.trakem2.transform.CoordinateTransformList;
@@ -32,15 +35,16 @@ import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.RealRandomAccessible;
-import net.imglib2.converter.Converter;
-import net.imglib2.converter.Converters;
+import net.imglib2.img.basictypeaccess.array.LongArray;
+import net.imglib2.img.planar.PlanarImg;
+import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.planar.PlanarImgs;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.ClampingNLinearInterpolatorFactory;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
 import net.imglib2.type.Type;
-import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.integer.UnsignedLongType;
 import net.imglib2.view.Views;
 
 /**
@@ -66,7 +70,7 @@ public class DeformToAligned {
 		@Parameter(names = { "--label", "-l" }, description = "label dataset, multiple entries possible" )
 		public List<String> labels = new ArrayList<>();
 
-		@Parameter(names = { "--label_annotation_offset" }, description = "optional labe and annotation offset if data comes from multiple files (padded raw, non-padded input)")
+		@Parameter(names = { "--label_annotation_offset" }, description = "optional label and annotation offset if data comes from multiple files (padded raw, non-padded input)")
 		private String annotationOffsetString = null;
 
 		@Parameter(names = { "--outfile", "-o" }, required = true, description = "output CREMI-format HDF5 file name")
@@ -186,8 +190,8 @@ public class DeformToAligned {
 		System.out.printf("Opening inputs: \"%s\", \"%s\", \"%s\"...", params.inFile, params.inFileLabels, params.inFileAnnotations);
 		System.out.println();
 
-		final IHDF5Reader rawReader = HDF5Factory.openForReading(params.inFile);
-		final IHDF5Reader labelsReader = params.inFileLabels == null ? rawReader : HDF5Factory.openForReading(params.inFileLabels);
+		final N5Reader rawReader = new N5HDF5Reader(params.inFile);
+		final N5Reader labelsReader = params.inFileLabels == null ? rawReader : new N5HDF5Reader(params.inFileLabels);
 		if (params.inFileAnnotations == null)
 			params.inFileAnnotations = params.inFile;
 
@@ -223,9 +227,9 @@ public class DeformToAligned {
 		/* raw pixels */
 		for (final String rawPath : params.raws) {
 
-			final RandomAccessibleInterval<UnsignedByteType> rawSource = Util.loadRaw(rawReader, rawPath, cellDimensions);
+			final RandomAccessibleInterval<UnsignedByteType> rawSource = N5Utils.open(rawReader, rawPath);
 
-			final double[] resolution = H5Utils.loadAttribute(rawReader, rawPath, "resolution");
+			final double[] resolution = rawReader.getAttribute(rawPath, "resolution", double[].class);
 			if (transformResolution == null)
 				transformResolution = resolution;
 
@@ -269,17 +273,19 @@ public class DeformToAligned {
 
 		final double[] offset = params.getAnnotationOffset();
 
+		System.out.println(Arrays.toString(offset));
+
 		/* labels */
 		for (final String labelsPath : params.labels) {
 
-			final RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(labelsReader, labelsPath, cellDimensions);
+			final RandomAccessibleInterval<UnsignedLongType> labelsSource = N5Utils.open(labelsReader, labelsPath);
 
-			final double[] resolution = H5Utils.loadAttribute(labelsReader, labelsPath, "resolution");
+			final double[] resolution = labelsReader.getAttribute(labelsPath, "resolution", double[].class);
 			if (transformResolution == null)
 				transformResolution = resolution;
 
 			/* override label offset with parameter */
-			final RandomAccessibleInterval<LabelMultisetType> translatedLabelsSource;
+			final RandomAccessibleInterval<UnsignedLongType> translatedLabelsSource;
 			if (offset == null)
 				translatedLabelsSource = labelsSource;
 			else
@@ -290,39 +296,30 @@ public class DeformToAligned {
 								Math.round(offset[1] / resolution[1]),
 								Math.round(offset[2] / resolution[0])});
 
-			final RandomAccessibleInterval<LongType> longLabelsSource =
-					Converters.convert(
-							translatedLabelsSource,
-							new Converter<LabelMultisetType, LongType>() {
-								@Override
-								public void convert(final LabelMultisetType a, final LongType b) {
-									b.set(a.entrySet().iterator().next().getElement().id());
-								}
-							},
-							new LongType());
-
 			H5Utils.createUnsignedLong(writer, labelsPath, sourceInterval, cellDimensions);
 
 			/* process in mellSize[2] thick slices to save some memory */
 			for (int zOffset = 0; zOffset < sourceInterval.dimension(2); zOffset += cellDimensions[2]) {
 
 				/* deform */
-				final RandomAccessibleInterval<LongType> labelsTarget =
+				final RandomAccessibleInterval<UnsignedLongType> labelsTarget =
 						Views.translate(
-								PlanarImgs.longs(
-										sourceInterval.dimension(0),//
-										sourceInterval.dimension(1),
-										Math.min(sourceInterval.dimension(2), cellDimensions[2])),
+								(PlanarImg<UnsignedLongType, LongArray>) new PlanarImgFactory< UnsignedLongType >().create(
+										new long[] {
+												sourceInterval.dimension(0),
+												sourceInterval.dimension(1),
+												Math.min(sourceInterval.dimension(2), cellDimensions[2])},
+										new UnsignedLongType()),
 								0,
 								0,
 								zOffset);
 
 				/* clear canvas by filling with outside */
-				for (final LongType t : Views.iterable(labelsTarget))
+				for (final UnsignedLongType t : Views.iterable(labelsTarget))
 					t.set(Label.OUTSIDE);
 
 				mapSlices(
-						Views.extendValue(longLabelsSource, new LongType(Label.OUTSIDE)),
+						Views.extendValue(translatedLabelsSource, new UnsignedLongType(Label.OUTSIDE)),
 						sourceInterval,
 						transforms,
 						new NearestNeighborInterpolatorFactory<>(),
@@ -343,8 +340,6 @@ public class DeformToAligned {
 			H5Utils.saveAttribute(new double[]{0, 0, 0}, writer, labelsPath, "offset");
 		}
 
-		rawReader.close();
-		labelsReader.close();
 		writer.close();
 
 		/* annotations */

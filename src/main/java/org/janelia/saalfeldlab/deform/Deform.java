@@ -15,6 +15,7 @@ import com.beust.jcommander.Parameter;
 
 import bdv.bigcat.label.FragmentSegmentAssignment;
 import bdv.bigcat.ui.GoldenAngleSaturatedARGBStream;
+import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
 import bdv.img.h5.H5UnsignedByteSetupImageLoader;
 import bdv.img.h5.H5Utils;
@@ -104,12 +105,22 @@ public class Deform {
 	final static private RandomAccessibleInterval<LabelMultisetType> loadLabels(
 			final IHDF5Reader reader,
 			final String dataset,
-			final double[] rawResolution) throws IOException {
+			final double[] rawResolution,
+			final VolatileGlobalCellCache cache) throws IOException {
+
 		final RandomAccessibleInterval<LabelMultisetType> fragmentsPixels;
 		if (reader.exists(dataset)) {
 			final double[] resolution = readResolution(reader, dataset, rawResolution);
-			final H5LabelMultisetSetupImageLoader fragments = new H5LabelMultisetSetupImageLoader(reader, null, dataset,
-					1, cellDimensions, resolution, new double[]{0, 0, 0});
+			final H5LabelMultisetSetupImageLoader fragments =
+					new H5LabelMultisetSetupImageLoader(
+							reader,
+							null,
+							dataset,
+							1,
+							cellDimensions,
+							resolution,
+							new double[]{0, 0, 0},
+							cache);
 			fragmentsPixels = fragments.getImage(0, 0);
 		} else {
 			System.out.println("no labels found cooresponding to requested dataset '" + dataset + "'");
@@ -477,12 +488,12 @@ public class Deform {
 				0,
 				cellDimensions,
 				resolution,
-				new double[]{0, 0, 0});
+				new VolatileGlobalCellCache(1, 1));
 		final RandomAccessibleInterval<UnsignedByteType> rawPixels = raw.getImage(0, ImgLoaderHints.LOAD_COMPLETELY);
 
 		/* labels */
 		final String fragmentsPath = labelsPath + "/" + labelsDataset;
-		final RandomAccessibleInterval<LabelMultisetType> labels = loadLabels(reader, fragmentsPath, resolution);
+		final RandomAccessibleInterval<LabelMultisetType> labels = loadLabels(reader, fragmentsPath, resolution, new VolatileGlobalCellCache(1, 1));
 
 		final RandomAccessibleInterval<LongType> longLabels = Converters.convert(labels,
 				new Converter<LabelMultisetType, LongType>() {

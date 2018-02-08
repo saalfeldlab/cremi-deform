@@ -10,6 +10,7 @@ import java.util.List;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 
+import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5UnsignedByteSetupImageLoader;
 import ch.systemsx.cisd.hdf5.HDF5DataTypeInformation;
 import ch.systemsx.cisd.hdf5.HDF5Factory;
@@ -86,7 +87,8 @@ public class ExportTiffSeries {
 							reader,
 							dataset,
 							0,
-							cellDimensions);
+							cellDimensions,
+							new VolatileGlobalCellCache(1, 1));
 					saveSlices( raw.getImage(0, ImgLoaderHints.LOAD_COMPLETELY), params.outPath);
 				}
 			}

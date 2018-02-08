@@ -6,6 +6,7 @@ import java.util.List;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 
+import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
@@ -82,7 +83,8 @@ public class FlattenNeuronIds
 							null,
 							params.label,
 							1,
-							cellDimensions );
+							cellDimensions,
+							new VolatileGlobalCellCache(1, 1));
 			labelLoader.getVolatileImage( 0, 0 ).dimensions( maxRawDimensions );
 		}
 		else
@@ -107,9 +109,10 @@ public class FlattenNeuronIds
 
 		/* canvas (to which the brush paints) */
 		/* TODO this has to change into a virtual container with temporary storage */
-		final CellImg< LongType, ?, ? > canvas;
+		final CellImg< LongType, ? > canvas;
 		if ( params.canvas != null && reader.exists( params.canvas ) )
-			canvas = H5Utils.loadUnsignedLong( reader, params.canvas, cellDimensions );
+//			canvas = H5Utils.loadUnsignedLong( reader, params.canvas, cellDimensions );
+			canvas = null;
 		else
 		{
 			canvas = new CellImgFactory< LongType >( cellDimensions ).create( maxRawDimensions, new LongType() );

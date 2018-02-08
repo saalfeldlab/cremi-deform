@@ -10,6 +10,7 @@ import java.util.Arrays;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 
+import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
 import bdv.labels.labelset.LabelMultisetType;
@@ -72,11 +73,11 @@ public class CropLabelBounds {
 
 		/* raw pixels */
 		final String rawPath = volumesPath + "/" + rawDataset;
-		final RandomAccessibleInterval<UnsignedByteType> rawSource = Util.loadRaw(reader, rawPath, cellDimensions);
+		final RandomAccessibleInterval<UnsignedByteType> rawSource = Util.loadRaw(reader, rawPath, cellDimensions, new VolatileGlobalCellCache(1, 1));
 
 		/* labels */
 		final String fragmentsPath = labelsPath + "/" + labelsDataset;
-		final RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(reader, fragmentsPath, cellDimensions);
+		final RandomAccessibleInterval<LabelMultisetType> labelsSource = Util.loadLabels(reader, fragmentsPath, cellDimensions, new VolatileGlobalCellCache(1, 1));
 
 		final RandomAccessibleInterval<LongType> longLabelsSource = Converters.convert(labelsSource,
 				new Converter<LabelMultisetType, LongType>() {
@@ -127,7 +128,7 @@ public class CropLabelBounds {
 		/* clefts */
 		final String cleftsPath = labelsPath + "/" + cleftsDataset;
 		if (reader.exists(cleftsPath)) {
-			final RandomAccessibleInterval<LabelMultisetType> cleftsSource = Util.loadLabels(reader, cleftsPath, cellDimensions);
+			final RandomAccessibleInterval<LabelMultisetType> cleftsSource = Util.loadLabels(reader, cleftsPath, cellDimensions, new VolatileGlobalCellCache(1, 1));
 
 			final RandomAccessibleInterval<LongType> longCleftsSource = Converters.convert(cleftsSource,
 					new Converter<LabelMultisetType, LongType>() {
