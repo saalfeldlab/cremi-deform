@@ -19,6 +19,8 @@ import bdv.bigcat.annotation.PostSynapticSite;
 import bdv.bigcat.annotation.PreSynapticSite;
 import bdv.labels.labelset.Label;
 import bdv.util.LocalIdService;
+import ij.IJ;
+import ij.ImageJ;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.interpolation.randomaccess.NearestNeighborInterpolatorFactory;
@@ -48,6 +50,8 @@ public class CleftPartners {
 	 */
 	public static void main(final String... args) throws Exception {
 
+		new ImageJ();
+
 		final Parameters params = new Parameters();
 		new JCommander(params, args);
 
@@ -68,6 +72,9 @@ public class CleftPartners {
 		final Collection<Annotation> annotationsCollection = annotations.getAnnotations();
 		final AffineRealRandomAccessible<UnsignedLongType, AffineGet>.AffineRealRandomAccess labelsAccess = labelsSourceScaled.realRandomAccess();
 		final AffineRealRandomAccessible<UnsignedLongType, AffineGet>.AffineRealRandomAccess cleftsAccess = cleftsSourceScaled.realRandomAccess();
+
+		IJ.log("pre_label, pre_id, pre_x, pre_y, pre_z, post_label, post_id, post_x, post_y, post_z, cleft");
+
 		annotationsCollection.forEach(
 				a -> {
 					if (a instanceof PostSynapticSite) {
@@ -96,7 +103,19 @@ public class CleftPartners {
 							if (cleftLabel != Label.TRANSPARENT)
 								break;
 						}
-						System.out.printf("%6d -> %6d via %6s", preLabel, postLabel, (cleftLabel == Label.TRANSPARENT ? "None" : cleftLabel));
+						IJ.log(String.format(
+								"%d, %d, %.2f, %.2f, %.2f, %d, %d, %.2f, %.2f, %.2f, %s",
+								preLabel,
+								a.getId(),
+								start.getDoublePosition(0),
+								start.getDoublePosition(1),
+								start.getDoublePosition(2),
+								postLabel,
+								b.getId(),
+								end.getDoublePosition(0),
+								end.getDoublePosition(1),
+								end.getDoublePosition(2),
+								(cleftLabel == Label.TRANSPARENT ? "-1" : cleftLabel)));
 						System.out.println();
 					}
 				});
