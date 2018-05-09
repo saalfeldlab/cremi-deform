@@ -13,7 +13,7 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 
 import net.imglib2.FinalInterval;
-import net.imglib2.position.Function;
+import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.type.numeric.integer.UnsignedLongType;
 import net.imglib2.view.Views;
 
@@ -56,8 +56,8 @@ public class TrainingValidationMask {
 		final FinalInterval interval = new FinalInterval(datasetAttributes.getDimensions());
 		final long validationThreshold = Math.round(datasetAttributes.getDimensions()[1] * 0.75);
 
-		final Function<UnsignedLongType> trainFunction = new Function<UnsignedLongType>(3, (x, y) -> y.set(x.getLongPosition(1) < validationThreshold ? 1 : 0), UnsignedLongType::new);
-		final Function<UnsignedLongType> validationFunction = new Function<UnsignedLongType>(3, (x, y) -> y.set(x.getLongPosition(1) >= validationThreshold ? 1 : 0), UnsignedLongType::new);
+		final FunctionRandomAccessible<UnsignedLongType> trainFunction = new FunctionRandomAccessible<UnsignedLongType>(3, (x, y) -> y.set(x.getLongPosition(1) < validationThreshold ? 1 : 0), UnsignedLongType::new);
+		final FunctionRandomAccessible<UnsignedLongType> validationFunction = new FunctionRandomAccessible<UnsignedLongType>(3, (x, y) -> y.set(x.getLongPosition(1) >= validationThreshold ? 1 : 0), UnsignedLongType::new);
 
 		N5Utils.save(
 				Views.interval(trainFunction, interval),
