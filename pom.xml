@@ -5,12 +5,12 @@
 
 	<parent>
 		<artifactId>pom-scijava</artifactId>
-		<version>22.3.0</version>
+		<version>23.2.0</version>
 		<groupId>org.scijava</groupId>
 	</parent>
 
 	<artifactId>deform</artifactId>
-	<version>0.0.2-SNAPSHOT</version>
+	<version>0.0.3-SNAPSHOT</version>
 
 	<name>Deform</name>
 	<description>Deform HDF5 sources</description>
@@ -55,7 +55,6 @@
 		<dependency>
 			<groupId>net.sf.trove4j</groupId>
 			<artifactId>trove4j</artifactId>
-			<version>3.0.3</version>
 		</dependency>
 		<dependency>
 			<groupId>net.imglib2</groupId>
@@ -87,11 +86,6 @@
 			<artifactId>bigwarp_fiji</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>com.beust</groupId>
-			<artifactId>jcommander</artifactId>
-			<version>1.35</version>
-		</dependency>
-		<dependency>
 			<groupId>net.imagej</groupId>
 			<artifactId>ij</artifactId>
 		</dependency>
@@ -116,7 +110,7 @@
 		<dependency>
 			<groupId>org.janelia.saalfeldlab</groupId>
 			<artifactId>n5-imglib2</artifactId>
-			<version>2.1.1</version>
+			<version>3.0.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.janelia.saalfeldlab</groupId>
@@ -132,6 +126,10 @@
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-csv</artifactId>
 			<version>1.5</version>
+		</dependency>
+		<dependency>
+			<groupId>info.picocli</groupId>
+			<artifactId>picocli</artifactId>
 		</dependency>
 	</dependencies>
 

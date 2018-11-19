@@ -460,7 +460,7 @@ public class TransformMesh implements InvertibleCoordinateTransform {
 
 		for (final Pair<AffineModel2D, double[][]> apq : av) {
 			if (isInTargetTriangle(apq.getB(), location)) {
-				apq.getA().applyInPlace(location);
+				apq.getA().applyInverseInPlace(location);
 				return;
 			}
 		}

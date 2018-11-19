@@ -15,8 +15,6 @@ import org.janelia.saalfeldlab.n5.N5Reader;
 import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Reader;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
 
 import bdv.bigcat.annotation.Annotation;
@@ -35,8 +33,6 @@ import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.RealPoint;
 import net.imglib2.RealRandomAccessible;
-import net.imglib2.img.basictypeaccess.array.LongArray;
-import net.imglib2.img.planar.PlanarImg;
 import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.planar.PlanarImgs;
 import net.imglib2.interpolation.InterpolatorFactory;
@@ -46,6 +42,8 @@ import net.imglib2.type.Type;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.integer.UnsignedLongType;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -55,34 +53,34 @@ public class DeformToAligned {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--infile", "-i" }, required = true, description = "input CREMI-format HDF5 file name")
+		@Option(names = { "--infile", "-i" }, required = true, description = "input CREMI-format HDF5 file name")
 		public String inFile;
 
-		@Parameter(names = { "--infile_labels", "-j" }, description = "input for labels CREMI-format HDF5 file name (default == --infile")
+		@Option(names = { "--infile_labels", "-j" }, description = "input for labels CREMI-format HDF5 file name (default == --infile")
 		public String inFileLabels = null;
 
-		@Parameter(names = { "--infile_annotations", "-k" }, description = "input for annotaions CREMI-format HDF5 file name (default == --infile")
+		@Option(names = { "--infile_annotations", "-k" }, description = "input for annotaions CREMI-format HDF5 file name (default == --infile")
 		public String inFileAnnotations = null;
 
-		@Parameter(names = { "--raw", "-r" }, description = "raw datasets, multiple entries possible" )
+		@Option(names = { "--raw", "-r" }, description = "raw datasets, multiple entries possible" )
 		public List<String> raws = new ArrayList<>();
 
-		@Parameter(names = { "--label", "-l" }, description = "label dataset, multiple entries possible" )
+		@Option(names = { "--label", "-l" }, description = "label dataset, multiple entries possible" )
 		public List<String> labels = new ArrayList<>();
 
-		@Parameter(names = { "--label_annotation_offset" }, description = "optional label and annotation offset if data comes from multiple files (padded raw, non-padded input)")
+		@Option(names = { "--label_annotation_offset" }, description = "optional label and annotation offset if data comes from multiple files (padded raw, non-padded input)")
 		private String annotationOffsetString = null;
 
-		@Parameter(names = { "--outfile", "-o" }, required = true, description = "output CREMI-format HDF5 file name")
+		@Option(names = { "--outfile", "-o" }, required = true, description = "output CREMI-format HDF5 file name")
 		public String outFile;
 
-		@Parameter(names = { "--intransformations", "-t" }, required = true, description = "input JSON export of alignment transformations, formatted as a list of lists")
+		@Option(names = { "--intransformations", "-t" }, required = true, description = "input JSON export of alignment transformations, formatted as a list of lists")
 		public String inTransformations;
 
-		@Parameter(names = { "--meshcellsize", "-c" }, description = "mesh cell size for rendering the output")
+		@Option(names = { "--meshcellsize", "-c" }, description = "mesh cell size for rendering the output")
 		public long meshCellSize = 64;
 
-		@Parameter(names = { "--numProcessors" }, description = "number of processors for parallel mapping, default all")
+		@Option(names = { "--numProcessors" }, description = "number of processors for parallel mapping, default all")
 		public int numProcessors = Runtime.getRuntime().availableProcessors();
 
 		public static double[] getReorderedDoubleArray(final String csv) {
@@ -185,7 +183,12 @@ public class DeformToAligned {
 	public static void main(final String... args) throws Exception {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		System.out.printf("Opening inputs: \"%s\", \"%s\", \"%s\"...", params.inFile, params.inFileLabels, params.inFileAnnotations);
 		System.out.println();
@@ -267,7 +270,7 @@ public class DeformToAligned {
 			}
 
 			if (resolution != null)
-				H5Utils.saveAttribute(resolution, writer, rawPath, "resolution");
+				H5Utils.saveAttribute(transformResolution, writer, rawPath, "resolution");
 			H5Utils.saveAttribute(new double[]{0, 0, 0}, writer, rawPath, "offset");
 		}
 
@@ -286,15 +289,23 @@ public class DeformToAligned {
 
 			/* override label offset with parameter */
 			final RandomAccessibleInterval<UnsignedLongType> translatedLabelsSource;
-			if (offset == null)
-				translatedLabelsSource = labelsSource;
+			if (offset == null) {
+				final double[] labelOffset = labelsReader.getAttribute(labelsPath, "offset", double[].class);
+				if (labelOffset != null) {
+					translatedLabelsSource = Views.translate(
+							Views.zeroMin(labelsSource),
+							(int)Math.round(labelOffset[2] / resolution[2]),
+							(int)Math.round(labelOffset[1] / resolution[1]),
+							(int)Math.round(labelOffset[0] / resolution[0]));
+				} else
+					translatedLabelsSource = labelsSource;
+			}
 			else
 				translatedLabelsSource = Views.translate(
 						Views.zeroMin(labelsSource),
-						new long[]{
-								Math.round(offset[0] / resolution[2]),
-								Math.round(offset[1] / resolution[1]),
-								Math.round(offset[2] / resolution[0])});
+						Math.round(offset[0] / resolution[2]),
+						Math.round(offset[1] / resolution[1]),
+						Math.round(offset[2] / resolution[0]));
 
 			H5Utils.createUnsignedLong(writer, labelsPath, sourceInterval, cellDimensions);
 
@@ -304,12 +315,11 @@ public class DeformToAligned {
 				/* deform */
 				final RandomAccessibleInterval<UnsignedLongType> labelsTarget =
 						Views.translate(
-								(PlanarImg<UnsignedLongType, LongArray>) new PlanarImgFactory< UnsignedLongType >().create(
+								new PlanarImgFactory< UnsignedLongType >(new UnsignedLongType()).create(
 										new long[] {
 												sourceInterval.dimension(0),
 												sourceInterval.dimension(1),
-												Math.min(sourceInterval.dimension(2), cellDimensions[2])},
-										new UnsignedLongType()),
+												Math.min(sourceInterval.dimension(2), cellDimensions[2])}),
 								0,
 								0,
 								zOffset);
@@ -336,7 +346,7 @@ public class DeformToAligned {
 			}
 
 			if (resolution != null)
-				H5Utils.saveAttribute(resolution, writer, labelsPath, "resolution");
+				H5Utils.saveAttribute(transformResolution, writer, labelsPath, "resolution");
 			H5Utils.saveAttribute(new double[]{0, 0, 0}, writer, labelsPath, "offset");
 		}
 

@@ -7,9 +7,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-
 import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5Utils;
 import bdv.labels.labelset.Label;
@@ -28,6 +25,8 @@ import net.imglib2.realtransform.Scale3D;
 import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -37,10 +36,10 @@ public class CropLabelBounds {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
+		@Option(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
 		public String inFile;
 
-		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
+		@Option(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
 		public String outFile;
 	}
 
@@ -57,7 +56,12 @@ public class CropLabelBounds {
 	public static void main(final String... args) throws IOException, ClassNotFoundException, InstantiationException, IllegalAccessException {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		final String labelsDataset = "neuron_ids";
 		final String cleftsDataset = "clefts";

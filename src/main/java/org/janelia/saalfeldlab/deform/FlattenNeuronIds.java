@@ -2,9 +2,8 @@ package org.janelia.saalfeldlab.deform;
 
 import java.util.Arrays;
 import java.util.List;
-
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
+import java.util.Optional;
+import java.util.concurrent.Callable;
 
 import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5LabelMultisetSetupImageLoader;
@@ -25,33 +24,38 @@ import net.imglib2.util.Pair;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.RandomAccessiblePair;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 public class FlattenNeuronIds
 {
-	static private class Parameters
+	static private class Parameters implements Callable<Optional<Void>>
 	{
-		@Parameter( names = { "--infile", "-i" }, description = "Input file path" )
+		@Option( names = { "--infile", "-i" }, description = "Input file path" )
 		public String inFile;
 
-		@Parameter( names = { "--outfile", "-o" }, description = "Output file path" )
+		@Option( names = { "--outfile", "-o" }, description = "Output file path" )
 		public String outFile;
 
-		@Parameter( names = { "--label", "-l" }, description = "label dataset" )
+		@Option( names = { "--label", "-l" }, description = "label dataset" )
 		public String label;
 
-		@Parameter( names = { "--slice", "-s" }, description = "slices to be cleared from any labels" )
+		@Option( names = { "--slice", "-s" }, description = "slices to be cleared from any labels" )
 		public List< Long > badSlices = Arrays.asList( new Long[ 0 ] );
 
-		@Parameter( names = { "--canvas", "-c" }, description = "canvas dataset" )
+		@Option( names = { "--canvas", "-c" }, description = "canvas dataset" )
 		public String canvas;
 
-		@Parameter( names = { "--export", "-e" }, description = "export dataset" )
+		@Option( names = { "--export", "-e" }, description = "export dataset" )
 		public String export = "/volumes/labels/merged_neuron_ids";
 
-		public void init()
+		@Override
+		public Optional<Void> call()
 		{
 			if ( outFile == null )
 				outFile = inFile;
+
+			return Optional.empty();
 		}
 	}
 
@@ -60,8 +64,8 @@ public class FlattenNeuronIds
 	public static void main( final String[] args ) throws Exception
 	{
 		final Parameters params = new Parameters();
-		new JCommander( params, args );
-		params.init();
+		if (CommandLine.call(params, args) == null)
+			return;
 
 		System.out.println( "Opening " + params.inFile );
 		final IHDF5Writer writer = HDF5Factory.open( params.outFile );
@@ -115,7 +119,7 @@ public class FlattenNeuronIds
 			canvas = null;
 		else
 		{
-			canvas = new CellImgFactory< LongType >( cellDimensions ).create( maxRawDimensions, new LongType() );
+			canvas = new CellImgFactory< LongType >( new LongType(), cellDimensions ).create( maxRawDimensions );
 			for ( final LongType t : canvas )
 				t.set( Label.TRANSPARENT );
 		}

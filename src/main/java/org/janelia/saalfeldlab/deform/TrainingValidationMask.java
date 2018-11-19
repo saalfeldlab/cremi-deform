@@ -9,13 +9,12 @@ import org.janelia.saalfeldlab.n5.N5Writer;
 import org.janelia.saalfeldlab.n5.hdf5.N5HDF5Writer;
 import org.janelia.saalfeldlab.n5.imglib2.N5Utils;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-
 import net.imglib2.FinalInterval;
 import net.imglib2.position.FunctionRandomAccessible;
 import net.imglib2.type.numeric.integer.UnsignedLongType;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -25,13 +24,13 @@ public class TrainingValidationMask {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--file", "-f" }, required = true, description = "input CREMI-format HDF5 file name")
+		@Option(names = { "--file", "-f" }, required = true, description = "input CREMI-format HDF5 file name")
 		public String file;
 
-		@Parameter(names = { "--label", "-l" }, description = "label dataset" )
+		@Option(names = { "--label", "-l" }, description = "label dataset" )
 		public String label;
 
-		@Parameter(names = { "--validationThreshold", "-v" }, description = "validation threshold in [0,1]" )
+		@Option(names = { "--validationThreshold", "-v" }, description = "validation threshold in [0,1]" )
 		public double validationThreshold = 0.75;
 	}
 
@@ -42,7 +41,12 @@ public class TrainingValidationMask {
 	public static void main(final String... args) throws Exception {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		System.out.println("Opening " + params.file);
 		final N5Writer writer = new N5HDF5Writer(params.file, 256, 256, 26);

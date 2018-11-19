@@ -10,9 +10,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-
 import bdv.bigcat.label.FragmentSegmentAssignment;
 import bdv.bigcat.ui.GoldenAngleSaturatedARGBStream;
 import bdv.img.cache.VolatileGlobalCellCache;
@@ -54,6 +51,8 @@ import net.imglib2.type.numeric.integer.LongType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -63,39 +62,39 @@ public class Deform {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
+		@Option(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name")
 		public String inFile;
 
-		@Parameter(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
+		@Option(names = { "--outfile", "-o" }, description = "output CREMI-format HDF5 file name")
 		public String outFile;
 
-		@Parameter(names = { "--spacing", "-s" }, description = "control point spacing in world units")
+		@Option(names = { "--spacing", "-s" }, description = "control point spacing in world units")
 		public double controlPointSpacing = 512;
 
-		@Parameter(names = { "--jitter", "-j" }, description = "jitter radius in world units")
+		@Option(names = { "--jitter", "-j" }, description = "jitter radius in world units")
 		public double jitterRadius = 32;
 
-		@Parameter(names = { "--jitter3d", "-3" }, description = "perform the jitter in 3D")
+		@Option(names = { "--jitter3d", "-3" }, description = "perform the jitter in 3D")
 		public boolean jitter3d = false;
 
-		@Parameter(names = { "--subsampleFactor" }, description = "approximate the exact spline transform by subsampling, which will be faster")
+		@Option(names = { "--subsampleFactor" }, description = "approximate the exact spline transform by subsampling, which will be faster")
 		public double subsampleFactor = 0;
 
-		@Parameter(names = { "--rotate", "-r" }, description = "rotate each section with the given angle in radians")
+		@Option(names = { "--rotate", "-r" }, description = "rotate each section with the given angle in radians")
 		public List<Double> rotate = new ArrayList<Double>();
 
-		@Parameter(names = { "--mirror", "-m" }, description = "a string like 'xy' indicating which axises to mirror")
+		@Option(names = { "--mirror", "-m" }, description = "a string like 'xy' indicating which axises to mirror")
 		public String mirror = "";
 
-		@Parameter(names = { "--num", "-n" }, description = "number of outputs")
+		@Option(names = { "--num", "-n" }, description = "number of outputs")
 		public double n = 1;
 
-		@Parameter(names = { "--onlyLut", "-l" }, description = "only store a transformation LUT int the output HDF, don't transform")
+		@Option(names = { "--onlyLut", "-l" }, description = "only store a transformation LUT int the output HDF, don't transform")
 		public boolean onlyLut = false;
 
 		// anisotropic
 
-		@Parameter(names = { "--jitterchance",
+		@Option(names = { "--jitterchance",
 				"-c" }, description = "chance for each section to get jittered relative to its predecessor, in other words, probability of an alignment error")
 		public double jitterChance = 0.5;
 	}
@@ -467,7 +466,12 @@ public class Deform {
 	public static void main(final String[] args) throws IOException {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		final String labelsDataset = "neuron_ids";
 		final String rawDataset = "raw";

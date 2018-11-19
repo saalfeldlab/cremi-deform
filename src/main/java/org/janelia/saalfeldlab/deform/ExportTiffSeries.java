@@ -7,9 +7,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
-
 import bdv.img.cache.VolatileGlobalCellCache;
 import bdv.img.h5.H5UnsignedByteSetupImageLoader;
 import ch.systemsx.cisd.hdf5.HDF5DataTypeInformation;
@@ -23,6 +20,8 @@ import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.type.numeric.NumericType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -32,13 +31,13 @@ public class ExportTiffSeries {
 
 	public static class Parameters {
 
-		@Parameter(names={"--infile", "-i"}, description = "input CREMI-format HDF5 file name")
+		@Option(names={"--infile", "-i"}, description = "input CREMI-format HDF5 file name")
 		public String inFile;
 
-		@Parameter(names={"--outpath", "-o"}, description = "output path")
+		@Option(names={"--outpath", "-o"}, description = "output path")
 		public String outPath;
 
-		@Parameter(names={"--dataset", "-d"}, description = "dataset to be exported")
+		@Option(names={"--dataset", "-d"}, description = "dataset to be exported")
 		public List< String > datasets;
 	}
 
@@ -73,7 +72,12 @@ public class ExportTiffSeries {
 	public static void main(final String[] args) throws IOException {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		System.out.println("Opening " + params.inFile);
 		final IHDF5Reader reader = HDF5Factory.openForReading(params.inFile);

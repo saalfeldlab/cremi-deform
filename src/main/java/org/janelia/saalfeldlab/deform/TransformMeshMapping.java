@@ -238,7 +238,7 @@ public class TransformMeshMapping<T extends Type<T>> {
 			}
 		} else {
 			for (final Pair<AffineModel2D, double[][]> triangle : av) {
-				mapTriangle(triangle, source, target);
+				mapInverseTriangle(triangle, source, target);
 			}
 		}
 	}

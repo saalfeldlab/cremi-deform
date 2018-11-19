@@ -20,8 +20,6 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
-import com.beust.jcommander.JCommander;
-import com.beust.jcommander.Parameter;
 import com.google.gson.Gson;
 
 import mpicbg.trakem2.transform.CoordinateTransform;
@@ -33,6 +31,8 @@ import net.imglib2.RealRandomAccessible;
 import net.imglib2.interpolation.InterpolatorFactory;
 import net.imglib2.type.Type;
 import net.imglib2.view.Views;
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 
 /**
  * @author Stephan Saalfeld &lt;saalfelds@janelia.hhmi.org&gt;
@@ -42,22 +42,22 @@ public class DeformToAlignedCSV2 {
 
 	public static class Parameters {
 
-		@Parameter(names = { "--infile", "-i" }, required = true, description = "input SWC file name")
+		@Option(names = { "--infile", "-i" }, required = true, description = "input SWC file name")
 		public String inFile;
 
-		@Parameter(names = { "--outfile", "-o" }, required = true, description = "output SWC file name")
+		@Option(names = { "--outfile", "-o" }, required = true, description = "output SWC file name")
 		public String outFile;
 
-		@Parameter(names = { "--intransformations", "-t" }, required = true, description = "input JSON export of alignment transformations, formatted as a list of lists")
+		@Option(names = { "--intransformations", "-t" }, required = true, description = "input JSON export of alignment transformations, formatted as a list of lists")
 		public String inTransformations;
 
-		@Parameter(names = { "--intransformations_offset" }, description = "optional transformation offset")
+		@Option(names = { "--intransformations_offset" }, description = "optional transformation offset")
 		private String transformOffsetString = null;
 
-		@Parameter(names = { "--intransformations_size" }, required = true, description = "transformation field of view")
+		@Option(names = { "--intransformations_size" }, required = true, description = "transformation field of view")
 		private String transformSizeString = null;
 
-		@Parameter(names = { "--resolution" }, description = "resolution")
+		@Option(names = { "--resolution" }, description = "resolution")
 		private String resolutionString = null;
 
 		public static double[] getDoubleArray(final String csv) {
@@ -171,7 +171,12 @@ public class DeformToAlignedCSV2 {
 	public static void main(final String... args) throws Exception {
 
 		final Parameters params = new Parameters();
-		new JCommander(params, args);
+		try {
+			CommandLine.populateCommand(params, args);
+		} catch (final RuntimeException e) {
+			CommandLine.usage(params, System.err);
+			return;
+		}
 
 		/* transforms */
 		TrakEM2Export trakem2Export = null;
