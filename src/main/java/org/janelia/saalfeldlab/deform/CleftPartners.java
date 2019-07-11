@@ -39,6 +39,9 @@ public class CleftPartners {
 
 		@Option(names = { "--infile", "-i" }, description = "input CREMI-format HDF5 file name (default == --infile")
 		public String inFile = null;
+
+		public String datasetPath = "/volumes/labels/merged_ids.merged";
+		public String cleftsPath = "/syncleft_dist_thr0.0_cc";
 	}
 
 	/**
@@ -60,11 +63,11 @@ public class CleftPartners {
 //		System.out.println("Opening input " + params.inFile);
 
 		final N5Reader labelsReader = new N5HDF5Reader(params.inFile);
-		RandomAccessibleInterval<UnsignedLongType> labelsSource = N5Utils.open(labelsReader, "/volumes/labels/neuron_ids");
-		RandomAccessibleInterval<UnsignedLongType> cleftsSource = N5Utils.open(labelsReader, "/volumes/labels/clefts");
-		final double[] labelsResolution = labelsReader.getAttribute("/volumes/labels/neuron_ids", "resolution", double[].class);
+		RandomAccessibleInterval<UnsignedLongType> labelsSource = N5Utils.open(labelsReader, params.datasetPath);
+		RandomAccessibleInterval<UnsignedLongType> cleftsSource = N5Utils.open(labelsReader, params.cleftsPath);
+		final double[] labelsResolution = labelsReader.getAttribute(params.datasetPath, "resolution", double[].class);
 		final Scale3D labelsScale = new Scale3D(labelsResolution[2], labelsResolution[1], labelsResolution[0]);
-		final double[] labelsOffset = labelsReader.getAttribute("/volumes/labels/neuron_ids", "offset", double[].class);
+		final double[] labelsOffset = labelsReader.getAttribute(params.datasetPath, "offset", double[].class);
 		if (labelsOffset != null) {
 			labelsSource = Views.translate(
 					labelsSource,
@@ -72,9 +75,9 @@ public class CleftPartners {
 					(long)Math.round(labelsOffset[1] / labelsResolution[1]) - labelsSource.min(1),
 					(long)Math.round(labelsOffset[0] / labelsResolution[0]) - labelsSource.min(2));
 		}
-		final double[] cleftsResolution = labelsReader.getAttribute("/volumes/labels/clefts", "resolution", double[].class);
+		final double[] cleftsResolution = labelsReader.getAttribute(params.cleftsPath, "resolution", double[].class);
 		final Scale3D cleftsScale = new Scale3D(cleftsResolution[2], cleftsResolution[1], cleftsResolution[0]);
-		final double[] cleftsOffset = labelsReader.getAttribute("/volumes/labels/clefts", "offset", double[].class);
+		final double[] cleftsOffset = labelsReader.getAttribute(params.cleftsPath, "offset", double[].class);
 		if (cleftsOffset != null) {
 			cleftsSource = Views.translate(
 					cleftsSource,
@@ -94,12 +97,13 @@ public class CleftPartners {
 		final AffineRealRandomAccessible<UnsignedLongType, AffineGet>.AffineRealRandomAccess labelsAccess = labelsSourceScaled.realRandomAccess();
 		final AffineRealRandomAccessible<UnsignedLongType, AffineGet>.AffineRealRandomAccess cleftsAccess = cleftsSourceScaled.realRandomAccess();
 
-		System.out.println("pre_label, pre_id, pre_x, pre_y, pre_z, post_label, post_id, post_x, post_y, post_z, cleft");
+		System.out.println("pre_label, pre_id, pre_x, pre_y, pre_z, pre_comment, post_label, post_id, post_x, post_y, post_z, post_comment, cleft");
 
 		annotationsCollection.forEach(
 				a -> {
 					if (a instanceof PostSynapticSite) {
 						final PreSynapticSite b = ((PostSynapticSite)a).getPartner();
+						if (b == null) return;
 						final RealPoint start = b.getPosition();
 						labelsAccess.setPosition(start);
 						final long preLabel = labelsAccess.get().get();
@@ -113,7 +117,8 @@ public class CleftPartners {
 								end.getDoublePosition(2) - start.getDoublePosition(2));
 						final double distance = Util.distance(start, end);
 
-						long cleftLabel = Label.TRANSPARENT;
+//						long cleftLabel = Label.TRANSPARENT;
+						long cleftLabel = Label.BACKGROUND;
 						cleftsAccess.setPosition(start);
 						for (double i = 0; i < distance; i += 0.5) {
 							final double step = i / distance;
@@ -121,22 +126,26 @@ public class CleftPartners {
 							cleftsAccess.setPosition(start.getDoublePosition(1) + step * d.getDoublePosition(1), 1);
 							cleftsAccess.setPosition(start.getDoublePosition(2) + step * d.getDoublePosition(2), 2);
 							cleftLabel = cleftsAccess.get().get();
-							if (cleftLabel != Label.TRANSPARENT)
+//							if (cleftLabel != Label.TRANSPARENT)
+							if (cleftLabel != Label.BACKGROUND)
 								break;
 						}
 						System.out.println(String.format(
-								"%d, %d, %.2f, %.2f, %.2f, %d, %d, %.2f, %.2f, %.2f, %s",
+								"%d, %d, %.2f, %.2f, %.2f, \"%s\", %d, %d, %.2f, %.2f, %.2f, \"%s\", %s",
 								preLabel,
 								b.getId(),
 								start.getDoublePosition(0),
 								start.getDoublePosition(1),
 								start.getDoublePosition(2),
+								b.getComment(),
 								postLabel,
 								a.getId(),
 								end.getDoublePosition(0),
 								end.getDoublePosition(1),
 								end.getDoublePosition(2),
-								(cleftLabel == Label.TRANSPARENT ? "-1" : cleftLabel)));
+								a.getComment(),
+//								(cleftLabel == Label.TRANSPARENT ? "-1" : cleftLabel)));
+								(cleftLabel == Label.BACKGROUND ? "-1" : cleftLabel)));
 					}
 				});
 	}
